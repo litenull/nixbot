@@ -1,0 +1,7 @@
+node_modules/
+dist/
+data/
+result
+flake.lock
+.env
+*.log
