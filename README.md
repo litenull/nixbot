@@ -1,4 +1,4 @@
-# Nanix
+# Nix Jail Bot
 
 NanoClaw-inspired agent isolation using Nix + nix-bwrapper.
 
@@ -92,7 +92,7 @@ Each group has:
 ## Files
 
 ```
-nanix/
+nix-jail-bot/
 ├── flake.nix          # Nix config (sandbox + dev shell)
 ├── src/
 │   ├── cli.ts         # Entry point
