@@ -4,6 +4,27 @@ import { spawn } from "child_process";
 import { mkdirSync, existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { chat, LLMConfig } from "./llm.js";
+import {
+  listCredentials,
+  setCredential,
+  removeCredential,
+  maskCredentials,
+  getRequiredCredsForCommand,
+  detectRequiredCreds,
+} from "./credentials.js";
+import {
+  initCronTable,
+  addCronJob,
+  removeCronJob,
+  listCronJobs,
+  getDueJobs,
+  updateJobLastRun,
+  toggleCronJob,
+  validateSchedule,
+  calculateNextRun,
+  getCronJobByName,
+  CronJob,
+} from "./cron.js";
 
 const config = z.object({
   groupsDir: z.string().default("./groups"),
@@ -26,7 +47,7 @@ const config = z.object({
 mkdirSync(config.dataDir, { recursive: true });
 mkdirSync(join(config.dataDir, "ipc"), { recursive: true });
 
-const db = new Database(join(config.dataDir, "nanix.db"));
+const db = new Database(join(config.dataDir, "nixbot.db"));
 db.exec(`
   CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,6 +63,8 @@ db.exec(`
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+initCronTable(db);
 
 interface GroupInfo {
   name: string;
@@ -79,12 +102,27 @@ interface SandboxResult {
 
 function runInSandbox(group: string, command: string, timeout = 60000): Promise<SandboxResult> {
   return new Promise((resolve) => {
-    const workspace = join(process.env.HOME || "/tmp", ".bwrapper", "nanix", "groups", group);
+    const workspace = join(process.env.HOME || "/tmp", ".bwrapper", "nixbot", "groups", group);
     mkdirSync(workspace, { recursive: true });
+    
+    const safeEnv: Record<string, string> = {};
+    const blocklist = [
+      /_API_KEY$/i, /_SECRET$/i, /_PASSWORD$/i, /_TOKEN$/i, /_CREDENTIAL/i,
+      /^ANTHROPIC_/i, /^OPENAI_/i, /^AWS_/i, /^GITHUB_/i,
+    ];
+    
+    for (const [key, value] of Object.entries(process.env)) {
+      if (value !== undefined && !blocklist.some(p => p.test(key))) {
+        safeEnv[key] = value;
+      }
+    }
+    
+    const credEnv = getRequiredCredsForCommand(command);
     
     const proc = spawn(config.sandboxBin, [command], {
       env: {
-        ...process.env,
+        ...safeEnv,
+        ...credEnv,
         HOME: process.env.HOME || "/tmp",
         WORKSPACE: workspace,
       },
@@ -133,12 +171,25 @@ CAPABILITIES:
 - Commands run in an isolated sandbox with: curl, jq, git, chromium, node
 - You have network access for web requests and API calls
 - Workspace files are in the current directory
+- You can schedule recurring tasks using /cron commands
 
 RULES:
 - Be concise and direct
 - When asked to do something, do it (run commands as needed)
 - Report results clearly
-- If a command fails, explain what went wrong`;
+- If a command fails, explain what went wrong
+
+SCHEDULING TASKS:
+When asked to do something repeatedly (e.g., "check this every day", "run hourly"):
+1. Determine the schedule from natural language:
+   - "every minute" → */1 * * * *
+   - "every hour"/"hourly" → 0 * * * *
+   - "every day"/"daily" → 0 9 * * *
+   - "every week"/"weekly" → 0 9 * * 1
+   - "every N minutes" → */N * * * *
+2. Create a descriptive job name (lowercase, dashes)
+3. Output a line with: /cron add <name> '<schedule>' '<prompt>'
+   Example: /cron add check-website '0 9 * * *' 'Check https://example.com and summarize any changes'`;
 
   const messages: Array<{ role: string; content: string }> = [
     { role: "system", content: systemPrompt },
@@ -155,10 +206,13 @@ RULES:
   }
   
   const bashBlocks = response.match(/```bash\n([\s\S]*?)```/g) || [];
+  const allDetectedVars: string[] = [];
   
   for (const block of bashBlocks) {
     const cmd = block.replace(/```bash\n?/g, "").replace(/```/g, "").trim();
     if (!cmd) continue;
+    
+    allDetectedVars.push(...detectRequiredCreds(cmd));
     
     console.log(`[${group}] Running: ${cmd.split("\n")[0].slice(0, 50)}...`);
     
@@ -169,8 +223,54 @@ RULES:
     response += `\n\n\`\`\`output\n${truncated}\n\`\`\``;
   }
   
-  addMessage(group, "assistant", response);
-  return response;
+  const cronAddPattern = /\/cron add (\S+) '([^']+)' '([^']+)'/g;
+  let cronMatch;
+  while ((cronMatch = cronAddPattern.exec(response)) !== null) {
+    const [, name, schedule, promptText] = cronMatch;
+    const validation = validateSchedule(schedule);
+    if (!validation.valid) {
+      response += `\n\n[Error: Invalid schedule '${schedule}': ${validation.error}]`;
+      continue;
+    }
+    if (getCronJobByName(db, name)) {
+      response += `\n\n[Error: Job '${name}' already exists]`;
+      continue;
+    }
+    addCronJob(db, { groupName: group, name, schedule, prompt: promptText });
+    const nextRun = calculateNextRun(schedule);
+    response += `\n\n[Scheduled: '${name}' will run next at ${nextRun?.toLocaleString() || "N/A"}]`;
+  }
+  
+  const maskedResponse = maskCredentials(response, allDetectedVars);
+  
+  addMessage(group, "assistant", maskedResponse);
+  return maskedResponse;
+}
+
+let schedulerInterval: ReturnType<typeof setInterval> | null = null;
+let schedulerCallback: ((group: string, prompt: string) => Promise<void>) | null = null;
+
+export function startScheduler(callback: (group: string, prompt: string) => Promise<void>, intervalMs = 60000): void {
+  schedulerCallback = callback;
+  schedulerInterval = setInterval(async () => {
+    const dueJobs = getDueJobs(db);
+    for (const job of dueJobs) {
+      console.log(`[cron] Running job '${job.name}' in group '${job.groupName}'`);
+      try {
+        await schedulerCallback!(job.groupName, job.prompt);
+        updateJobLastRun(db, job.id);
+      } catch (err) {
+        console.error(`[cron] Job '${job.name}' failed:`, (err as Error).message);
+      }
+    }
+  }, intervalMs);
+}
+
+export function stopScheduler(): void {
+  if (schedulerInterval) {
+    clearInterval(schedulerInterval);
+    schedulerInterval = null;
+  }
 }
 
 export async function repl(llmConfig: LLMConfig): Promise<void> {
@@ -186,16 +286,31 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
   registerGroup("main", join(config.groupsDir, "main"));
   registerGroup("work", join(config.groupsDir, "work"));
   
-  console.log("\n  Nanix Agent v0.1.0");
+  console.log("\n  Nixbot Agent v0.1.0");
   console.log("  ───────────────────");
   console.log("  Commands:");
   console.log("    @<group> <msg>  - Send to group");
   console.log("    /switch <group> - Change active group");
   console.log("    /list           - List groups");
   console.log("    /history        - Show conversation history");
+  console.log("    /cred list      - List stored credentials");
+  console.log("    /cred add <NAME> [SCOPE] - Add credential (prompts for value)");
+  console.log("    /cred remove <NAME> - Remove credential");
+  console.log("    /cron list [group] - List cron jobs");
+  console.log("    /cron add <NAME> <SCHEDULE> <PROMPT> - Add job");
+  console.log("    /cron remove <NAME> - Remove job");
+  console.log("    /cron enable|disable <NAME> - Toggle job");
   console.log("    /quit           - Exit\n");
   
   let currentGroup = "main";
+  
+  startScheduler(async (group, prompt) => {
+    try {
+      await processMessage(group, prompt, llmConfig);
+    } catch (err) {
+      console.error(`[cron] Error in group ${group}:`, (err as Error).message);
+    }
+  });
   
   while (true) {
     const input = await question(`[${currentGroup}]> `);
@@ -221,6 +336,172 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
         const preview = h.content.slice(0, 80).replace(/\n/g, " ");
         console.log(`  ${h.role}: ${preview}${h.content.length > 80 ? "..." : ""}`);
       }
+      continue;
+    }
+    
+    if (input === "/cred list") {
+      const creds = listCredentials();
+      if (creds.length === 0) {
+        console.log("No credentials stored.");
+      } else {
+        console.log("Stored credentials:");
+        for (const c of creds) {
+          const lastUsed = c.lastUsed ? new Date(c.lastUsed).toLocaleString() : "never";
+          const scope = c.scope || "-";
+          console.log(`  ${c.name}  [scope: ${scope}]  [last used: ${lastUsed}]`);
+        }
+      }
+      continue;
+    }
+    
+    if (input.startsWith("/cred add ")) {
+      const args = input.slice(10).trim().split(/\s+/);
+      if (args.length < 1 || !args[0]) {
+        console.log("Usage: /cred add <NAME> [SCOPE]");
+        continue;
+      }
+      const name = args[0];
+      const scope = args.length > 1 ? args.slice(1).join(" ") : undefined;
+      
+      const value = await question(`Enter value for ${name}: `);
+      if (!value.trim()) {
+        console.log("Cancelled - no value provided.");
+        continue;
+      }
+      
+      setCredential(name, value.trim(), scope);
+      console.log(`Credential '${name}' stored.`);
+      continue;
+    }
+    
+    if (input.startsWith("/cred remove ")) {
+      const name = input.slice(13).trim();
+      if (!name) {
+        console.log("Usage: /cred remove <NAME>");
+        continue;
+      }
+      
+      if (removeCredential(name)) {
+        console.log(`Credential '${name}' removed.`);
+      } else {
+        console.log(`Credential '${name}' not found.`);
+      }
+      continue;
+    }
+    
+    if (input.startsWith("/cred ")) {
+      console.log("Usage: /cred list | /cred add <NAME> [SCOPE] | /cred remove <NAME>");
+      continue;
+    }
+    
+    if (input === "/cron list" || input.startsWith("/cron list ")) {
+      const group = input.slice(11).trim() || undefined;
+      const jobs = listCronJobs(db, group);
+      if (jobs.length === 0) {
+        console.log("No cron jobs found.");
+      } else {
+        console.log("Cron jobs:");
+        for (const job of jobs) {
+          const status = job.enabled ? "enabled" : "disabled";
+          const lastRun = job.lastRun ? new Date(job.lastRun).toLocaleString() : "never";
+          const nextRun = job.nextRun ? new Date(job.nextRun).toLocaleString() : "N/A";
+          console.log(`  ${job.name} [${job.groupName}] [${status}]`);
+          console.log(`    schedule: ${job.schedule}`);
+          console.log(`    last: ${lastRun}, next: ${nextRun}`);
+          console.log(`    prompt: ${job.prompt.slice(0, 50)}${job.prompt.length > 50 ? "..." : ""}`);
+        }
+      }
+      continue;
+    }
+    
+    if (input.startsWith("/cron add ")) {
+      const args = input.slice(10).trim();
+      const firstSpace = args.indexOf(" ");
+      if (firstSpace === -1) {
+        console.log("Usage: /cron add <NAME> <SCHEDULE> <PROMPT>");
+        console.log("Schedule format: minute hour day-of-month month day-of-week");
+        console.log("Example: /cron add check-api '0 * * * *' 'Check if the API is responding'");
+        continue;
+      }
+      const name = args.slice(0, firstSpace);
+      const rest = args.slice(firstSpace + 1);
+      
+      const scheduleMatch = rest.match(/^'([^']+)'\s+(.+)$/);
+      const scheduleUnquoted = rest.match(/^(\S+)\s+(.+)$/);
+      
+      let schedule: string;
+      let prompt: string;
+      
+      if (scheduleMatch) {
+        schedule = scheduleMatch[1];
+        prompt = scheduleMatch[2];
+      } else if (scheduleUnquoted) {
+        schedule = scheduleUnquoted[1];
+        prompt = scheduleUnquoted[2];
+      } else {
+        console.log("Usage: /cron add <NAME> <SCHEDULE> <PROMPT>");
+        continue;
+      }
+      
+      const validation = validateSchedule(schedule);
+      if (!validation.valid) {
+        console.log(`Invalid schedule: ${validation.error}`);
+        continue;
+      }
+      
+      if (getCronJobByName(db, name)) {
+        console.log(`Job '${name}' already exists. Use /cron remove ${name} first.`);
+        continue;
+      }
+      
+      addCronJob(db, { groupName: currentGroup, name, schedule, prompt });
+      const nextRun = calculateNextRun(schedule);
+      console.log(`Job '${name}' added. Next run: ${nextRun?.toLocaleString() || "N/A"}`);
+      continue;
+    }
+    
+    if (input.startsWith("/cron remove ")) {
+      const name = input.slice(13).trim();
+      if (!name) {
+        console.log("Usage: /cron remove <NAME>");
+        continue;
+      }
+      
+      if (removeCronJob(db, name)) {
+        console.log(`Job '${name}' removed.`);
+      } else {
+        console.log(`Job '${name}' not found.`);
+      }
+      continue;
+    }
+    
+    if (input.startsWith("/cron enable ")) {
+      const name = input.slice(13).trim();
+      if (toggleCronJob(db, name, true)) {
+        console.log(`Job '${name}' enabled.`);
+      } else {
+        console.log(`Job '${name}' not found.`);
+      }
+      continue;
+    }
+    
+    if (input.startsWith("/cron disable ")) {
+      const name = input.slice(14).trim();
+      if (toggleCronJob(db, name, false)) {
+        console.log(`Job '${name}' disabled.`);
+      } else {
+        console.log(`Job '${name}' not found.`);
+      }
+      continue;
+    }
+    
+    if (input.startsWith("/cron ")) {
+      console.log("Usage:");
+      console.log("  /cron list [group]");
+      console.log("  /cron add <NAME> <SCHEDULE> <PROMPT>");
+      console.log("  /cron remove <NAME>");
+      console.log("  /cron enable|disable <NAME>");
+      console.log("Schedule: minute hour day-of-month month day-of-week (e.g., '0 * * * *' = hourly)");
       continue;
     }
     

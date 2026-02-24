@@ -1,10 +1,10 @@
 # AGENTS.md
 
-This file documents how to work with the Nanix codebase.
+This file documents how to work with the Nixbot codebase.
 
 ## Overview
 
-Nanix is a NanoClaw-inspired agent isolation system using:
+Nixbot is a NanoClaw-inspired agent isolation system using:
 - **Nix** for reproducible sandbox environments
 - **nix-bwrapper** for application sandboxing (with custom headless variant)
 - **TypeScript** for orchestration logic
@@ -17,9 +17,13 @@ User Input → TypeScript REPL → LLM API → Parse Response
                                     ↓
                               bash blocks detected
                                     ↓
+                        detect $VAR references in command
+                                    ↓
+                        inject only required credentials
+                                    ↓
                               spawn bwrap sandbox
                                     ↓
-                              return output → store in SQLite
+                              return output → mask credentials → store in SQLite
 ```
 
 ### Key Files
@@ -27,12 +31,15 @@ User Input → TypeScript REPL → LLM API → Parse Response
 | File | Purpose |
 |------|---------|
 | `flake.nix` | Nix configuration (sandbox + dev shell) |
-| `src/cli.ts` | Entry point, loads .env |
+| `src/cli.ts` | Entry point, loads .env, initializes credentials |
 | `src/repl.ts` | REPL loop, message processing, sandbox spawning |
 | `src/llm.ts` | LLM API integration (Anthropic/OpenAI/z.ai) |
 | `src/config.ts` | Configuration schema/validation |
+| `src/credentials.ts` | Encrypted credential management |
+| `src/credentials.test.ts` | Unit tests for credential system |
+| `src/cron.ts` | Cron job scheduling and management |
 | `groups/*/CLAUDE.md` | Per-group context files |
-| `data/nanix.db` | SQLite database (created at runtime) |
+| `data/nixbot.db` | SQLite database (created at runtime) |
 
 ## Development Workflow
 
@@ -153,6 +160,133 @@ if (config.provider === "new-provider") {
 - `context_path` - TEXT
 - `created_at` - DATETIME
 
+### cron_jobs table
+- `id` - INTEGER PRIMARY KEY
+- `group_name` - TEXT
+- `name` - TEXT UNIQUE
+- `schedule` - TEXT (cron format: `minute hour day-of-month month day-of-week`)
+- `prompt` - TEXT
+- `enabled` - INTEGER (0/1)
+- `last_run` - DATETIME
+- `next_run` - DATETIME
+- `created_at` - DATETIME
+
+## Cron Service
+
+Scheduled agent tasks run per-group using standard cron syntax.
+
+### REPL Commands
+
+| Command | Description |
+|---------|-------------|
+| `/cron list [group]` | List cron jobs (optionally filtered by group) |
+| `/cron add <NAME> <SCHEDULE> <PROMPT>` | Add a new job |
+| `/cron remove <NAME>` | Remove a job |
+| `/cron enable <NAME>` | Enable a disabled job |
+| `/cron disable <NAME>` | Disable a job |
+
+### Schedule Format
+
+Standard 5-field cron: `minute hour day-of-month month day-of-week`
+
+| Field | Values |
+|-------|--------|
+| minute | 0-59 |
+| hour | 0-23 |
+| day-of-month | 1-31 |
+| month | 1-12 |
+| day-of-week | 0-6 (0 = Sunday) |
+
+Special characters: `*` (any), `,` (list), `-` (range), `/` (step)
+
+### Examples
+
+```
+# Hourly API check
+/cron add check-api '0 * * * *' 'Check if the API is responding'
+
+# Daily report at 9am
+/cron add daily-report '0 9 * * *' 'Generate a summary of yesterday's activity'
+
+# Every 15 minutes
+/cron add frequent-check '*/15 * * * *' 'Check queue depth'
+```
+
+### How It Works
+
+1. Scheduler runs every 60 seconds checking for due jobs
+2. When a job is due, it triggers `processMessage()` in the job's group
+3. Job's `last_run` is updated and `next_run` is calculated
+4. Failed jobs log errors but don't block other jobs
+
+### Natural Language Scheduling
+
+The agent can create cron jobs from natural language requests:
+
+```
+[main]> check https://example.com every day and report changes
+```
+
+The LLM will automatically generate and execute:
+```
+/cron add check-example '0 9 * * *' 'Check https://example.com and report changes'
+```
+
+Common patterns:
+- "every minute" → `*/1 * * * *`
+- "every hour"/"hourly" → `0 * * * *`
+- "every day"/"daily" → `0 9 * * *`
+- "every week"/"weekly" → `0 9 * * 1`
+
+## Credential Management
+
+Credentials are stored encrypted at `~/.nixbot/credentials.json` using AES-256-GCM. The encryption key is at `~/.nixbot/key`.
+
+### Security Model
+
+- **Blocklist filtering**: Sensitive env vars (e.g., `*_API_KEY`, `*_SECRET`, `*_TOKEN`) are never passed to the sandbox
+- **Per-command injection**: Credentials are only injected when a command references them via `$VAR` or `${VAR}`
+- **Output masking**: Credential values are replaced with `***` in logs and stored messages
+
+### Files
+
+| Path | Purpose |
+|------|---------|
+| `~/.nixbot/key` | 32-byte encryption key (auto-generated, mode 0600) |
+| `~/.nixbot/credentials.json` | Encrypted credential store |
+
+### REPL Commands
+
+| Command | Description |
+|---------|-------------|
+| `/cred list` | List all credentials (name, scope, last used) |
+| `/cred add <NAME> [SCOPE]` | Add credential (prompts for value) |
+| `/cred remove <NAME>` | Remove credential |
+
+### Example
+
+```
+[main]> /cred add GITHUB_TOKEN repo
+Enter value for GITHUB_TOKEN: <hidden>
+Credential 'GITHUB_TOKEN' stored.
+
+[main]> push to github
+... agent runs: git push https://$GITHUB_TOKEN@github.com/...
+... output shows: *** instead of actual token
+```
+
+### Key File
+
+- Auto-generated on first run if missing
+- **Cannot be recovered if lost** - all stored credentials become inaccessible
+- Keep secure and backed up separately
+
+### Environment Variables
+
+| Variable | Purpose |
+|----------|---------|
+| `NANIX_CRED_DIR` | Override credentials directory (for testing) |
+
 ## Common Tasks
 
 ### Add a tool to the sandbox
@@ -212,7 +346,19 @@ Delete `data/` directory to reset:
 rm -rf data/
 ```
 
+### Credential errors
+If credentials fail to decrypt, the key file may be corrupted or mismatched:
+```bash
+# Warning: this will make all stored credentials inaccessible
+rm ~/.nixbot/key ~/.nixbot/credentials.json
+```
+
 ## Testing
+
+### Unit tests
+```bash
+npm test
+```
 
 ### Unit test the sandbox
 ```bash
@@ -235,10 +381,10 @@ OPENAI_API_KEY=test npm run dev
 ### As a Nix package
 ```nix
 # In another flake
-inputs.nanix.url = "path:/path/to/nanix";
+inputs.nixbot.url = "path:/path/to/nixbot";
 
 # Use the package
-environment.systemPackages = [ nanix.packages.x86_64-linux.default ];
+environment.systemPackages = [ nixbot.packages.x86_64-linux.default ];
 ```
 
 ### As a systemd service
@@ -247,6 +393,6 @@ Create a systemd unit that runs `npm run start` with appropriate env vars.
 ## Notes
 
 - The sandbox uses `--die-with-parent` so it exits when the parent process dies
-- Each group gets its own workspace directory at `~/.bwrapper/nanix/groups/{group}`
+- Each group gets its own workspace directory at `~/.bwrapper/nixbot/groups/{group}`
 - The LLM will automatically execute bash blocks it generates
 - Keep `CLAUDE.md` files concise - they go into every LLM prompt

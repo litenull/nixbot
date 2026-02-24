@@ -37,7 +37,7 @@
         set -euo pipefail
         
         COMMAND="$*"
-        WORKSPACE="''${WORKSPACE:-$HOME/.bwrapper/nanix/workspace}"
+        WORKSPACE="''${WORKSPACE:-$HOME/.bwrapper/nixbot/workspace}"
         
         mkdir -p "$WORKSPACE"
         
@@ -72,7 +72,7 @@
               mkdir -p $out/bin $out/share/applications
               cat > $out/bin/browser-agent << 'SCRIPT'
 #!/bin/sh
-cd "$HOME/.bwrapper/nanix/workspace" 2>/dev/null || cd "$HOME"
+cd "$HOME/.bwrapper/nixbot/workspace" 2>/dev/null || cd "$HOME"
 exec $SHELL
 SCRIPT
               chmod +x $out/bin/browser-agent
@@ -91,7 +91,7 @@ DESKTOP
           addPkgs = with pkgs; [ chromium nodejs ];
         };
         sockets = { x11 = true; pulseaudio = false; pipewire = false; };
-        mounts.readWrite = [ "$HOME/.bwrapper/nanix/workspace" ];
+        mounts.readWrite = [ "$HOME/.bwrapper/nixbot/workspace" ];
       };
 
     in {
@@ -117,7 +117,7 @@ DESKTOP
           export NANIX_DATA_DIR="$PWD/data"
           
           echo ""
-          echo "Nanix Development Environment"
+          echo "Nixbot Development Environment"
           echo "─────────────────────────────"
           echo "Sandbox: ${headlessSandbox}/bin/run-in-sandbox"
           echo "Run: npm run dev"

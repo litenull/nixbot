@@ -2,8 +2,16 @@
 import "dotenv/config";
 import { repl } from "./repl.js";
 import { chat, LLMConfig } from "./llm.js";
+import { loadCredentials } from "./credentials.js";
 
 async function main(): Promise<void> {
+  try {
+    loadCredentials();
+  } catch (err) {
+    console.error(`Failed to load credentials: ${(err as Error).message}`);
+    process.exit(1);
+  }
+  
   const apiKey = process.env.ANTHROPIC_API_KEY || process.env.OPENAI_API_KEY;
   
   if (!apiKey) {
