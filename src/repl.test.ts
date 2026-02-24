@@ -129,11 +129,11 @@ await describe("repl utilities", async () => {
     
     await beforeEach(() => {
       fs.mkdirSync(TEST_DIR, { recursive: true });
-      process.env.NANIX_CRED_DIR = TEST_DIR;
+      process.env.NIXBOT_CRED_DIR = TEST_DIR;
     });
     
     await afterEach(() => {
-      delete process.env.NANIX_CRED_DIR;
+      delete process.env.NIXBOT_CRED_DIR;
       if (fs.existsSync(TEST_DIR)) {
         fs.rmSync(TEST_DIR, { recursive: true, force: true });
       }

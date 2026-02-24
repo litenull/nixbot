@@ -32,12 +32,13 @@ User Input → TypeScript REPL → LLM API → Parse Response
 |------|---------|
 | `flake.nix` | Nix configuration (sandbox + dev shell) |
 | `src/cli.ts` | Entry point, loads .env, initializes credentials |
-| `src/repl.ts` | REPL loop, message processing, sandbox spawning |
+| `src/repl.ts` | REPL loop, message processing, sandbox spawning, mid-task input |
 | `src/llm.ts` | LLM API integration (Anthropic/OpenAI/z.ai) |
 | `src/config.ts` | Configuration schema/validation |
 | `src/credentials.ts` | Encrypted credential management |
 | `src/credentials.test.ts` | Unit tests for credential system |
 | `src/cron.ts` | Cron job scheduling and management |
+| `src/tape.ts` | Tape logging for all actions and outputs |
 | `groups/*/CLAUDE.md` | Per-group context files |
 | `data/nixbot.db` | SQLite database (created at runtime) |
 
@@ -171,6 +172,15 @@ if (config.provider === "new-provider") {
 - `next_run` - DATETIME
 - `created_at` - DATETIME
 
+### tape_log table
+- `id` - INTEGER PRIMARY KEY
+- `group_name` - TEXT
+- `action_type` - TEXT (command, output, feedback, llm_request, llm_response, pause, cancel, resume)
+- `content` - TEXT
+- `metadata` - TEXT (JSON)
+- `created_at` - DATETIME
+- `expires_at` - DATETIME
+
 ## Cron Service
 
 Scheduled agent tasks run per-group using standard cron syntax.
@@ -237,6 +247,142 @@ Common patterns:
 - "every hour"/"hourly" → `0 * * * *`
 - "every day"/"daily" → `0 9 * * *`
 - "every week"/"weekly" → `0 9 * * 1`
+
+## Mid-Task Input
+
+While the agent is executing commands, you can provide real-time feedback. A supervisor agent responds immediately while the main task continues.
+
+### How It Works
+
+1. Agent starts executing a multi-step task
+2. While commands run, type your feedback and press Enter
+3. Within 500ms, a supervisor agent responds to your input
+4. The main task continues uninterrupted
+5. Use `pause` or `cancel` to actually stop execution
+
+### Visual Feedback
+
+- `● Feedback queued` (green) - Your input was captured
+- `💬 <response>` (blue) - Supervisor agent response
+- `● Paused` (purple) - Execution paused (command interrupted)
+- `● Cancel requested` (yellow) - Ctrl+C pressed (command interrupted)
+
+### Example
+
+```
+[main]> deploy the app
+[main] Running: npm run build...
+<type: what are you doing?>
+● Feedback queued
+↳ Processing: what are you doing?
+💬 I'm currently running `npm run build` to compile the application. The build appears to be in progress based on the output showing module resolution.
+
+<task continues running...>
+```
+
+### Supervisor Agent
+
+The supervisor agent has context about:
+- The original task being performed
+- The currently running command
+- The latest output from the command
+
+It can answer questions about progress, acknowledge feedback, or provide status updates. It does NOT modify the main task's behavior - use `pause` to stop and redirect the agent.
+
+### Interruption Behavior
+
+- **Regular feedback**: Supervisor responds, command continues
+- **Pause** (`pause`, `wait`, etc.): Command is interrupted immediately
+- **Cancel** (`Ctrl+C`): Command is interrupted immediately
+
+## Pause Feature
+
+Pause execution mid-task to review progress or give new instructions.
+
+### Pause Keywords
+
+Type any of these (and press Enter) while the agent is working:
+- `pause`, `wait`, `hold on`, `stop`
+- `hang on`, `hold up`, `give me a moment`
+- `hold it`, `freeze`
+
+### Resume
+
+Type `resume` or `continue` to pick up where the agent left off.
+
+### Example
+
+```
+[main]> run the full test suite
+[main] Running: npm test...
+<pause>
+⏸️  Paused. Type 'resume' to continue or give new instructions.
+
+[main]> what's taking so long?
+⏸️  You have a paused task. Type 'resume' to continue, or give new instructions.
+
+[main]> resume
+▶️  Resuming...
+[agent continues execution]
+```
+
+## Tape Logging
+
+All actions and outputs are logged to the tape log for review and querying. Logs expire after 30 days.
+
+### What's Logged
+
+| Action Type | Description |
+|-------------|-------------|
+| `command` | Bash commands executed in sandbox |
+| `output` | Command output (truncated to 2000 chars) |
+| `feedback` | Mid-task user feedback |
+| `llm_request` | User messages sent to LLM |
+| `llm_response` | LLM responses (truncated) |
+| `pause` | Pause requests |
+| `cancel` | Cancel requests |
+| `resume` | Resume after pause |
+
+### REPL Commands
+
+| Command | Description |
+|---------|-------------|
+| `/tape recent [hours]` | Show recent activity (default: 24h) |
+| `/tape search <query>` | Search tape logs |
+| `/tape stats` | Show tape statistics |
+
+### Example
+
+```
+[main]> /tape recent
+⚡ [14:32:15] command: npm run build
+📤 [14:32:18] output: Build completed successfully
+💬 [14:32:20] feedback: try production build
+⚡ [14:32:22] command: npm run build --mode production
+
+[main]> /tape search npm
+Found 5 entries:
+[14:32:22] command: npm run build --mode production
+[14:32:15] command: npm run build
+...
+
+[main]> /tape stats
+Tape Log Statistics:
+  Total entries: 127
+  Oldest entry: 2/20/2026, 10:15:00 AM
+  Expiring soon (< 3 days): 12
+  By type:
+    command: 45
+    output: 42
+    feedback: 15
+    ...
+```
+
+### Implementation
+
+- Logs stored in `tape_log` table in SQLite
+- 30-day retention with automatic cleanup on startup
+- Agent can query tape via system prompt instructions
 
 ## Credential Management
 

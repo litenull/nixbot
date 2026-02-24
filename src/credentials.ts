@@ -4,7 +4,7 @@ import * as path from "path";
 import * as os from "os";
 
 function getNixbotDir(): string {
-  const override = process.env.NANIX_CRED_DIR;
+  const override = process.env.NIXBOT_CRED_DIR;
   if (override) return override;
   return path.join(os.homedir(), ".nixbot");
 }

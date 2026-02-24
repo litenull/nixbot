@@ -1,6 +1,7 @@
 import { spawn } from "child_process";
+import { resolve } from "path";
 
-const sandboxBin = process.env.NANIX_SANDBOX_BIN || "./result/bin/browser-agent";
+const sandboxBin = process.env.NIXBOT_SANDBOX_BIN ? resolve(process.env.NIXBOT_SANDBOX_BIN) : resolve("./result/bin/run-in-sandbox");
 
 function runInSandbox(command: string, timeout = 10000): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {

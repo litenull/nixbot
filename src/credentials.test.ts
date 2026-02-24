@@ -9,18 +9,18 @@ const TEST_DIR = path.join(os.tmpdir(), `nixbot-cred-test-${Date.now()}-${Math.r
 
 async function importFresh() {
   const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  process.env.NANIX_TEST_ID = uniqueId;
+  process.env.NIXBOT_TEST_ID = uniqueId;
   const module = await import(`./credentials.js?cache=${uniqueId}`);
   return module as typeof import("./credentials.js");
 }
 
 function setupTestEnv() {
   fs.mkdirSync(TEST_DIR, { recursive: true });
-  process.env.NANIX_CRED_DIR = TEST_DIR;
+  process.env.NIXBOT_CRED_DIR = TEST_DIR;
 }
 
 function teardownTestEnv() {
-  delete process.env.NANIX_CRED_DIR;
+  delete process.env.NIXBOT_CRED_DIR;
   
   if (fs.existsSync(TEST_DIR)) {
     fs.rmSync(TEST_DIR, { recursive: true, force: true });

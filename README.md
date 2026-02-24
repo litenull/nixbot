@@ -12,6 +12,7 @@ NanoClaw-inspired agent isolation using Nix + nix-bwrapper.
 │  │  - REPL/CLI interface         │  │
 │  │  - SQLite (messages, groups)  │  │
 │  │  - LLM API integration        │  │
+│  │  - Tape logging (30d retention)│  │
 │  │  - Spawns bwrap per task      │  │
 │  └──────────────┬────────────────┘  │
 └─────────────────┼───────────────────┘
@@ -80,7 +81,44 @@ NIXBOT_LLM_MODEL=gpt-4o
 /history                   # Show conversation history
 /add personal              # Create new group
 /quit                      # Exit
+
+# Tape logging
+/tape recent [hours]       # Show recent activity (default: 24h)
+/tape search <query>       # Search tape logs
+/tape stats                # Show tape statistics
 ```
+
+## Mid-Task Input
+
+While the agent is working, you can provide feedback and get an immediate response from a supervisor agent:
+
+```
+[main]> deploy the app
+[main] Running: npm run build...
+<type: what are you doing?>
+● Feedback queued
+↳ Processing: what are you doing?
+💬 I'm currently running `npm run build` to compile the application.
+```
+
+The supervisor responds within ~500ms while the main task continues. Use `pause` or `Ctrl+C` to actually stop execution.
+
+### Pause
+
+Type `pause`, `wait`, `hold on`, etc. to pause execution:
+
+```
+[main]> run tests
+<pause>
+⏸️  Paused. Type 'resume' to continue or give new instructions.
+
+[main]> resume
+▶️  Resuming...
+```
+
+### Cancel
+
+Press `Ctrl+C` to cancel the current task.
 
 ## Groups
 
@@ -96,8 +134,10 @@ nix-jail-bot/
 ├── flake.nix          # Nix config (sandbox + dev shell)
 ├── src/
 │   ├── cli.ts         # Entry point
-│   ├── repl.ts        # REPL loop + orchestration
-│   └── llm.ts         # LLM API calls
+│   ├── repl.ts        # REPL loop + orchestration + mid-task input
+│   ├── llm.ts         # LLM API calls
+│   ├── tape.ts        # Tape logging (30d retention)
+│   └── cron.ts        # Scheduled tasks
 ├── groups/
 │   ├── main/CLAUDE.md
 │   └── work/CLAUDE.md

@@ -20,13 +20,13 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   
-  const provider = process.env.NANIX_LLM_PROVIDER as "anthropic" | "openai" | "openai-compatible" || "anthropic";
+  const provider = process.env.NIXBOT_LLM_PROVIDER as "anthropic" | "openai" | "openai-compatible" || "anthropic";
   
   const llmConfig: LLMConfig = {
     provider,
     apiKey,
-    model: process.env.NANIX_LLM_MODEL || (provider === "anthropic" ? "claude-sonnet-4-20250514" : "gpt-4o"),
-    baseUrl: process.env.NANIX_LLM_BASE_URL,
+    model: process.env.NIXBOT_LLM_MODEL || (provider === "anthropic" ? "claude-sonnet-4-20250514" : "gpt-4o"),
+    baseUrl: process.env.NIXBOT_LLM_BASE_URL,
   };
   
   await repl(llmConfig);

@@ -112,9 +112,9 @@ DESKTOP
         packages = with pkgs; [ nodejs nodePackages.npm typescript tsx headlessSandbox ];
         
         shellHook = ''
-          export NANIX_SANDBOX_BIN="${headlessSandbox}/bin/run-in-sandbox"
-          export NANIX_GROUPS_DIR="$PWD/groups"
-          export NANIX_DATA_DIR="$PWD/data"
+          export NIXBOT_SANDBOX_BIN="${headlessSandbox}/bin/run-in-sandbox"
+          export NIXBOT_GROUPS_DIR="$PWD/groups"
+          export NIXBOT_DATA_DIR="$PWD/data"
           
           echo ""
           echo "Nixbot Development Environment"
