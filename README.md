@@ -54,20 +54,20 @@ ANTHROPIC_API_KEY=your-key npm run dev
 
 ```env
 # Example for z.ai (GLM)
-NANIX_LLM_PROVIDER=openai-compatible
+NIXBOT_LLM_PROVIDER=openai-compatible
 OPENAI_API_KEY=your-zhipu-key
-NANIX_LLM_MODEL=glm-4-flash
-NANIX_LLM_BASE_URL=https://api.z.ai/api/coding/paas/v4
+NIXBOT_LLM_MODEL=glm-4-flash
+NIXBOT_LLM_BASE_URL=https://api.z.ai/api/coding/paas/v4
 
 # Example for Anthropic
-NANIX_LLM_PROVIDER=anthropic
+NIXBOT_LLM_PROVIDER=anthropic
 ANTHROPIC_API_KEY=your-key
-NANIX_LLM_MODEL=claude-sonnet-4-20250514
+NIXBOT_LLM_MODEL=claude-sonnet-4-20250514
 
 # Example for OpenAI
-NANIX_LLM_PROVIDER=openai
+NIXBOT_LLM_PROVIDER=openai
 OPENAI_API_KEY=your-key
-NANIX_LLM_MODEL=gpt-4o
+NIXBOT_LLM_MODEL=gpt-4o
 ```
 
 ## Commands
