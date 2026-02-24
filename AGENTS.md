@@ -72,10 +72,10 @@ cp .env.example .env
 ```
 
 Required variables:
-- `NANIX_LLM_PROVIDER` - `anthropic`, `openai`, or `openai-compatible`
+- `NIXBOT_LLM_PROVIDER` - `anthropic`, `openai`, or `openai-compatible`
 - `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` - API key
-- `NANIX_LLM_MODEL` - Model name (e.g., `glm-4-flash`, `claude-sonnet-4-20250514`)
-- `NANIX_LLM_BASE_URL` - For openai-compatible providers
+- `NIXBOT_LLM_MODEL` - Model name (e.g., `glm-4-flash`, `claude-sonnet-4-20250514`)
+- `NIXBOT_LLM_BASE_URL` - For openai-compatible providers
 
 ## Sandbox System
 
@@ -285,7 +285,7 @@ Credential 'GITHUB_TOKEN' stored.
 
 | Variable | Purpose |
 |----------|---------|
-| `NANIX_CRED_DIR` | Override credentials directory (for testing) |
+| `NIXBOT_CRED_DIR` | Override credentials directory (for testing) |
 
 ## Common Tasks
 
