@@ -229,6 +229,21 @@ function registerGroup(name: string, contextPath: string): void {
   db.prepare("INSERT OR REPLACE INTO groups (name, context_path) VALUES (?, ?)").run(name, contextPath);
 }
 
+export function ensureGroup(name: string): void {
+  const groupPath = join(config.groupsDir, name);
+  mkdirSync(groupPath, { recursive: true });
+  const claudeMd = join(groupPath, "CLAUDE.md");
+  if (!existsSync(claudeMd)) {
+    writeFileSync(claudeMd, `# ${name} Group\n\nContext for this group.\n`);
+  }
+  registerGroup(name, groupPath);
+}
+
+export function ensureDefaultGroups(): void {
+  ensureGroup("main");
+  ensureGroup("work");
+}
+
 function addMessage(group: string, role: "user" | "assistant", content: string): void {
   db.prepare("INSERT INTO messages (group_name, role, content) VALUES (?, ?, ?)").run(group, role, content);
 }
@@ -387,7 +402,7 @@ interface PauseResult {
   partialResponse: string;
 }
 
-async function processMessage(group: string, message: string, llmConfig: LLMConfig, options?: ProcessMessageOptions): Promise<string | PauseResult> {
+export async function processMessage(group: string, message: string, llmConfig: LLMConfig, options?: ProcessMessageOptions): Promise<string | PauseResult> {
   addMessage(group, "user", message);
   logTapeAction(db, group, "llm_request", message);
   
@@ -626,8 +641,7 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
   
   const inputBuffer = new InputBuffer();
   
-  registerGroup("main", join(config.groupsDir, "main"));
-  registerGroup("work", join(config.groupsDir, "work"));
+  ensureDefaultGroups();
   
   console.log("\n  Nixbot Agent v0.1.0");
   console.log("  ───────────────────");
@@ -941,13 +955,7 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
     
     if (input.startsWith("/add ")) {
       const name = input.slice(5).trim();
-      const groupPath = join(config.groupsDir, name);
-      mkdirSync(groupPath, { recursive: true });
-      const claudeMd = join(groupPath, "CLAUDE.md");
-      if (!existsSync(claudeMd)) {
-        writeFileSync(claudeMd, `# ${name} Group\n\nContext for this group.\n`);
-      }
-      registerGroup(name, groupPath);
+      ensureGroup(name);
       console.log(`Created group: ${name}`);
       continue;
     }
@@ -997,5 +1005,4 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
     }
   }
 }
-
 
