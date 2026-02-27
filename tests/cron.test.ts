@@ -18,7 +18,7 @@ import {
   calculateNextRun,
   validateSchedule,
   formatSchedule,
-} from "./cron.js";
+} from "../src/cron.js";
 
 let db: Database.Database;
 let tempDir: string;

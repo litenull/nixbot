@@ -1,6 +1,6 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import { parseAllowedChatIds, parseGroupCommand, splitTelegramMessage } from "./plugins/telegram.js";
+import { parseAllowedChatIds, parseGroupCommand, splitTelegramMessage } from "../src/plugins/telegram.js";
 
 await describe("telegram plugin helpers", async () => {
   await describe("parseAllowedChatIds", async () => {

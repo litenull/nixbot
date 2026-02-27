@@ -1,7 +1,7 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import { startPlugins } from "./plugins/manager.js";
-import { PluginContext } from "./plugins/types.js";
+import { startPlugins } from "../src/plugins/manager.js";
+import { PluginContext } from "../src/plugins/types.js";
 
 function withEnv(vars: Record<string, string | undefined>, fn: () => Promise<void>): Promise<void> {
   const previous: Record<string, string | undefined> = {};
