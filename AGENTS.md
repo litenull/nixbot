@@ -36,7 +36,7 @@ User Input → TypeScript REPL → LLM API → Parse Response
 | `src/llm.ts` | LLM API integration (Anthropic/OpenAI/z.ai) |
 | `src/config.ts` | Configuration schema/validation |
 | `src/credentials.ts` | Encrypted credential management |
-| `src/credentials.test.ts` | Unit tests for credential system |
+| `tests/credentials.test.ts` | Unit tests for credential system |
 | `src/cron.ts` | Cron job scheduling and management |
 | `src/tape.ts` | Tape logging for all actions and outputs |
 | `groups/*/CLAUDE.md` | Per-group context files |
@@ -63,6 +63,10 @@ npm run dev
 ```bash
 npm run build
 ```
+
+## Contribution Rule
+
+- When adding or changing features, update the relevant documentation in the same change (for example `README.md`, `AGENTS.md`, or other docs affected by the feature).
 
 ## Configuration
 

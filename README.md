@@ -69,7 +69,39 @@ NIXBOT_LLM_MODEL=claude-sonnet-4-20250514
 NIXBOT_LLM_PROVIDER=openai
 OPENAI_API_KEY=your-key
 NIXBOT_LLM_MODEL=gpt-4o
+
+# Plugin system (comma-separated names)
+NIXBOT_PLUGINS=telegram
+
+# Telegram plugin (BotFather token)
+NIXBOT_TELEGRAM_BOT_TOKEN=123456:ABCDEF...
+# Optional: default group for Telegram chats
+NIXBOT_TELEGRAM_GROUP=main
+# Optional: allowlist chat IDs
+# NIXBOT_TELEGRAM_ALLOWED_CHAT_IDS=123456789,987654321
 ```
+
+## Plugin System
+
+Plugins are loaded from `NIXBOT_PLUGINS` at startup. Built-in plugins:
+
+- `telegram` - receives Telegram messages and routes them to Nixbot groups
+
+If no plugins are enabled, the core REPL still works normally.
+
+## Telegram Plugin (BotFather)
+
+1. In Telegram, open `@BotFather`.
+2. Run `/newbot`, set a name/username, and copy the bot token.
+3. Set:
+   - `NIXBOT_PLUGINS=telegram`
+   - `NIXBOT_TELEGRAM_BOT_TOKEN=<your token>`
+4. Start Nixbot with `npm run dev`.
+
+In Telegram:
+- Send `/start` to verify the connector is live.
+- Send `/group work` to route this chat to group `work`.
+- Send normal messages to run tasks through the bot.
 
 ## Commands
 

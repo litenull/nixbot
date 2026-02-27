@@ -9,7 +9,7 @@
     "dev": "tsx src/cli.ts",
     "build": "tsc",
     "start": "node dist/cli.js",
-    "test": "tsx --test src/*.test.ts"
+    "test": "tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "better-sqlite3": "^11.0.0",

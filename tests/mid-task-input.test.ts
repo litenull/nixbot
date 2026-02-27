@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach, mock } from "node:test";
 import assert from "node:assert";
-import { InputBuffer } from "./repl.js";
+import { InputBuffer } from "../src/repl.js";
 
 describe("Mid-Task Input Flow", () => {
   let buffer: InputBuffer;

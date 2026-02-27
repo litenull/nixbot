@@ -9,7 +9,7 @@ import {
   getRecentTapeSummary,
   getTapeStats,
   TapeEntry,
-} from "./tape.js";
+} from "../src/tape.js";
 import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";

@@ -33,14 +33,15 @@ nixbot/
 │   ├── cli.ts             # Entry point
 │   ├── repl.ts            # REPL loop + orchestration
 │   ├── llm.ts             # LLM API integration
-│   ├── llm.test.ts        # LLM tests
 │   ├── config.ts          # Configuration schema
 │   ├── credentials.ts     # Credential management
-│   ├── credentials.test.ts
 │   ├── cron.ts            # Cron scheduling
-│   ├── cron.test.ts
-│   ├── repl.test.ts
 │   └── test-sandbox.ts    # Sandbox manual test
+├── tests/
+│   ├── llm.test.ts        # LLM tests
+│   ├── credentials.test.ts
+│   ├── cron.test.ts
+│   └── repl.test.ts
 ├── groups/
 │   ├── main/CLAUDE.md
 │   └── work/CLAUDE.md

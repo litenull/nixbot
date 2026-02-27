@@ -140,7 +140,7 @@ await describe("repl utilities", async () => {
     });
     
     await it("detects credentials in extracted commands", async () => {
-      const { detectRequiredCreds } = await import("./credentials.js");
+      const { detectRequiredCreds } = await import("../src/credentials.js");
       const text = "```bash\ncurl -H \"X-Token: $SECRET_TOKEN\" https://api.example.com\n```";
       const blocks = extractBashBlocks(text);
       const vars = detectRequiredCreds(blocks[0]);
@@ -148,7 +148,7 @@ await describe("repl utilities", async () => {
     });
     
     await it("detects multiple credentials in command", async () => {
-      const { detectRequiredCreds } = await import("./credentials.js");
+      const { detectRequiredCreds } = await import("../src/credentials.js");
       const text = "```bash\ngit push https://$GITHUB_TOKEN@github.com/$REPO.git\n```";
       const blocks = extractBashBlocks(text);
       const vars = detectRequiredCreds(blocks[0]);
