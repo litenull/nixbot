@@ -180,8 +180,12 @@ nix-jail-bot/
 
 - Host filesystem isolated
 - Network enabled (for Playwright/API calls)
-- Chromium + Node.js available
-- Tools: curl, jq, git, ripgrep, fd, bat
+- Headless sandbox tools available in `PATH` (from `flake.nix` `agentTools`):
+  `bashInteractive`, `coreutils`, `curl`, `jq`, `git`, `ripgrep`, `fd`,
+  `bat`, `findutils`, `gnused`, `gawk`, `gnugrep`, `nodejs`, `chromium`, `which`
+- Bash builtins are also available (`cd`, `echo`, `export`, etc.)
+- By default, anything outside the list above is not available in `PATH`
+- `/nix/store` is mounted read-only, so explicitly-addressed binaries there may still be runnable
 - Per-app X11 via xwayland-satellite
 - DBus filtering via xdg-dbus-proxy
 
