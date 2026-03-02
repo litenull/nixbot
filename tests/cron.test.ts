@@ -280,7 +280,9 @@ await describe("calculateNextRun", async () => {
     const next = calculateNextRun("0 * * * *", now);
     assert.ok(next);
     assert.strictEqual(next!.getMinutes(), 0);
-    assert.strictEqual(next!.getHours(), now.getHours() + 1);
+    // Handle midnight rollover
+    const expectedHour = (now.getHours() + 1) % 24;
+    assert.strictEqual(next!.getHours(), expectedHour);
   });
 
   it("calculates next run for every minute", () => {
