@@ -1,73 +1,27 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert";
 import Database from "better-sqlite3";
-import { mkdtempSync, rmSync, existsSync, mkdirSync } from "fs";
+import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
+import {
+  initGroupsTable,
+  getGroup,
+  registerGroup,
+  listGroups,
+  addMessage,
+  getHistory,
+} from "../src/groups.js";
 
 let db: Database.Database;
 let tempDir: string;
-
-function initMessagesTable(database: Database.Database): void {
-  database.exec(`
-    CREATE TABLE IF NOT EXISTS messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      group_name TEXT NOT NULL,
-      role TEXT NOT NULL,
-      content TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    
-    CREATE TABLE IF NOT EXISTS groups (
-      name TEXT PRIMARY KEY,
-      context_path TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-  `);
-}
-
-function addMessage(
-  database: Database.Database,
-  group: string,
-  role: "user" | "assistant",
-  content: string
-): void {
-  database.prepare("INSERT INTO messages (group_name, role, content) VALUES (?, ?, ?)").run(group, role, content);
-}
-
-function getHistory(
-  database: Database.Database,
-  group: string,
-  limit = 50
-): Array<{ role: string; content: string }> {
-  return database.prepare(`
-    SELECT role, content FROM messages 
-    WHERE group_name = ? 
-    ORDER BY created_at DESC 
-    LIMIT ?
-  `).all(group, limit).reverse() as Array<{ role: string; content: string }>;
-}
-
-function registerGroup(database: Database.Database, name: string, contextPath: string): void {
-  database.prepare("INSERT OR REPLACE INTO groups (name, context_path) VALUES (?, ?)").run(name, contextPath);
-}
-
-function getGroup(database: Database.Database, name: string): { name: string; contextPath: string } | undefined {
-  const row = database.prepare("SELECT name, context_path FROM groups WHERE name = ?").get(name) as { name: string; context_path: string } | undefined;
-  if (!row) return undefined;
-  return { name: row.name, contextPath: row.context_path };
-}
-
-function listGroups(database: Database.Database): Array<{ name: string; contextPath: string }> {
-  return database.prepare("SELECT name, context_path FROM groups").all() as Array<{ name: string; contextPath: string }>;
-}
 
 await describe("database operations", async () => {
   
   await beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), "nixbot-db-test-"));
     db = new Database(join(tempDir, "test.db"));
-    initMessagesTable(db);
+    initGroupsTable(db);
   });
   
   await afterEach(() => {

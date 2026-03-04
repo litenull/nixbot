@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import assert from "node:assert";
-import { InputBuffer } from "../src/repl.js";
+import { InputBuffer } from "../src/input-buffer.js";
 
 describe("InputBuffer", () => {
   let buffer: InputBuffer;

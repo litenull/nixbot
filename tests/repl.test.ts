@@ -3,27 +3,7 @@ import assert from "node:assert";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-
-const BASH_BLOCK_PATTERN = /```bash\n([\s\S]*?)```/g;
-
-function extractBashBlocks(text: string): string[] {
-  const blocks: string[] = [];
-  let match;
-  const pattern = new RegExp(BASH_BLOCK_PATTERN.source, "g");
-  
-  while ((match = pattern.exec(text)) !== null) {
-    const cmd = match[1].trim();
-    if (cmd) blocks.push(cmd);
-  }
-  return blocks;
-}
-
-function truncateOutput(output: string, maxLength = 2000): string {
-  if (output.length > maxLength) {
-    return output.slice(0, maxLength) + "\n... (truncated)";
-  }
-  return output;
-}
+import { extractBashBlocks, truncateOutput } from "../src/utils.js";
 
 const TEST_DIR = path.join(os.tmpdir(), `nixbot-repl-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
