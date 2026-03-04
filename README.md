@@ -4,7 +4,8 @@ NanoClaw-inspired agent isolation using Nix + nix-bwrapper.
 
 ## Architecture
 
-```
+<div align="center">
+<pre>
 ┌─────────────────────────────────────┐
 │         Host (Nix dev shell)        │
 │  ┌───────────────────────────────┐  │
@@ -26,7 +27,8 @@ NanoClaw-inspired agent isolation using Nix + nix-bwrapper.
 │   - X11 (isolated xwayland)         │
 │   - DBus proxy (filtered)           │
 └─────────────────────────────────────┘
-```
+</pre>
+</div>
 
 ## Quick Start
 
