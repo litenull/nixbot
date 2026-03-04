@@ -17,7 +17,8 @@ NanoClaw-inspired agent isolation using Nix + nix-bwrapper.
 │  │  - Spawns bwrap per task      │  │
 │  └──────────────┬────────────────┘  │
 └─────────────────┼───────────────────┘
-                  │ spawn
+                  │
+                spawn
                   ▼
 ┌─────────────────────────────────────┐
 │   bwrap sandbox (nix-bwrapper)      │
