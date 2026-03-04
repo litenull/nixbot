@@ -15,11 +15,11 @@ NanoClaw-inspired agent isolation using Nix + nix-bwrapper.
 │  │  - LLM API integration        │  │
 │  │  - Tape logging (30d)         │  │
 │  │  - Spawns bwrap per task      │  │
-│  └──────────────┬────────────────┘  │
-└─────────────────┼───────────────────┘
-                  │
-                spawn
-                  ▼
+│  └───────────────┬───────────────┘  │
+└──────────────────┼──────────────────┘
+│
+spawn
+▼
 ┌─────────────────────────────────────┐
 │   bwrap sandbox (nix-bwrapper)      │
 │   - FHS environment                 │
