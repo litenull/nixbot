@@ -2,6 +2,9 @@ import { z } from "zod";
 import { request } from "https";
 import { request as httpRequest } from "http";
 
+const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
+const OPENAI_BASE_URL = "https://api.openai.com";
+
 const Message = z.object({
   role: z.enum(["system", "user", "assistant"]),
   content: z.string(),
@@ -67,51 +70,49 @@ export async function chat(
     max_tokens: 4096,
   };
 
-  const body = JSON.stringify(chatReq);
+  let endpoint = "";
+  let headers: Record<string, string> = {};
+  let payload: unknown;
 
   if (config.provider === "anthropic") {
-    const res = await makeRequest(
-      "https://api.anthropic.com/v1/messages",
-      {
-        "Content-Type": "application/json",
-        "x-api-key": config.apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      JSON.stringify({
-        model: config.model,
-        max_tokens: 4096,
-        messages: messages
-          .filter((m) => m.role !== "system")
-          .map((m) => ({
-            role: m.role as "user" | "assistant",
-            content: m.content,
-          })),
-        system: messages.find((m) => m.role === "system")?.content,
-      }),
-    );
+    endpoint = ANTHROPIC_MESSAGES_URL;
+    headers = {
+      "Content-Type": "application/json",
+      "x-api-key": config.apiKey,
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    };
+    payload = {
+      model: config.model,
+      max_tokens: 4096,
+      messages: messages
+        .filter((m) => m.role !== "system")
+        .map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+        })),
+      system: messages.find((m) => m.role === "system")?.content,
+    };
+  } else {
+    const baseUrl =
+      config.baseUrl || (config.provider === "openai" ? OPENAI_BASE_URL : "");
+    const hasVersion = /\/v\d+\/?$/.test(baseUrl);
+    endpoint = hasVersion
+      ? `${baseUrl.replace(/\/$/, "")}/chat/completions`
+      : `${baseUrl.replace(/\/$/, "")}/v1/chat/completions`;
+    headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.apiKey}`,
+    };
+    payload = chatReq;
+  }
 
-    const data = JSON.parse(res);
+  const res = await makeRequest(endpoint, headers, JSON.stringify(payload));
+
+  const data = JSON.parse(res);
+  if (config.provider === "anthropic") {
     return data.content?.[0]?.text ?? "";
   }
 
-  const baseUrl =
-    config.baseUrl ||
-    (config.provider === "openai" ? "https://api.openai.com" : "");
-  const hasVersion = /\/v\d+\/?$/.test(baseUrl);
-  const endpoint = hasVersion
-    ? `${baseUrl.replace(/\/$/, "")}/chat/completions`
-    : `${baseUrl.replace(/\/$/, "")}/v1/chat/completions`;
-
-  const res = await makeRequest(
-    endpoint,
-    {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body,
-  );
-
-  const data = JSON.parse(res);
   return data.choices?.[0]?.message?.content ?? "";
 }
