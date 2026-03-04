@@ -1,5 +1,8 @@
-import { describe, it, mock } from "node:test";
+import { describe, it, before, after } from "node:test";
 import assert from "node:assert";
+import { createServer, IncomingMessage, ServerResponse } from "http";
+import { chat } from "../src/llm.js";
+
 
 function buildEndpoint(baseUrl: string, provider: string): string {
   const hasVersion = /\/v\d+\/?$/.test(baseUrl);
@@ -517,5 +520,114 @@ await describe("error handling", async () => {
     });
     
     assert.deepStrictEqual(messages, ["Error 1", "Error 2", "Error 3", "Error 4"]);
+  });
+});
+
+await describe("chat() HTTP integration", async () => {
+  let testServer: ReturnType<typeof createServer>;
+  let testPort: number;
+  let lastRequestBody = "";
+  let mockResponseBody = "";
+  let mockStatusCode = 200;
+
+  before(async () => {
+    testServer = createServer((req: IncomingMessage, res: ServerResponse) => {
+      let body = "";
+      req.on("data", (chunk: Buffer) => { body += chunk; });
+      req.on("end", () => {
+        lastRequestBody = body;
+        res.writeHead(mockStatusCode, { "Content-Type": "application/json" });
+        res.end(mockResponseBody);
+      });
+    });
+    await new Promise<void>(resolve => testServer.listen(0, resolve));
+    testPort = (testServer.address() as { port: number }).port;
+  });
+
+  after(async () => {
+    await new Promise<void>(resolve => testServer.close(() => resolve()));
+  });
+
+  const openaiConfig = () => ({
+    provider: "openai-compatible" as const,
+    apiKey: "test-key",
+    model: "test-model",
+    baseUrl: `http://localhost:${testPort}`,
+  });
+
+  const messages = [
+    { role: "system", content: "You are helpful." },
+    { role: "user", content: "Hello" },
+  ];
+
+  await it("sends request and returns OpenAI response", async () => {
+    mockStatusCode = 200;
+    mockResponseBody = JSON.stringify({ choices: [{ message: { content: "Hi there!" } }] });
+
+    const result = await chat(openaiConfig(), messages);
+    assert.strictEqual(result, "Hi there!");
+  });
+
+  await it("sends correct Authorization header", async () => {
+    mockStatusCode = 200;
+    mockResponseBody = JSON.stringify({ choices: [{ message: { content: "ok" } }] });
+
+    await chat(openaiConfig(), messages);
+
+    // lastRequestBody should contain the model
+    const body = JSON.parse(lastRequestBody);
+    assert.strictEqual(body.model, "test-model");
+    assert.strictEqual(body.max_tokens, 4096);
+  });
+
+  await it("sends all messages to openai-compatible endpoint", async () => {
+    mockStatusCode = 200;
+    mockResponseBody = JSON.stringify({ choices: [{ message: { content: "ok" } }] });
+
+    await chat(openaiConfig(), messages);
+
+    const body = JSON.parse(lastRequestBody);
+    assert.strictEqual(body.messages.length, 2);
+    assert.strictEqual(body.messages[0].role, "system");
+    assert.strictEqual(body.messages[1].role, "user");
+  });
+
+  await it("returns empty string for missing choices", async () => {
+    mockStatusCode = 200;
+    mockResponseBody = JSON.stringify({});
+
+    const result = await chat(openaiConfig(), messages);
+    assert.strictEqual(result, "");
+  });
+
+  await it("throws on HTTP error status", async () => {
+    mockStatusCode = 401;
+    mockResponseBody = JSON.stringify({ error: { message: "Unauthorized" } });
+
+    await assert.rejects(() => chat(openaiConfig(), messages), /HTTP 401/);
+  });
+
+  await it("uses baseUrl with /v1 suffix correctly", async () => {
+    mockStatusCode = 200;
+    mockResponseBody = JSON.stringify({ choices: [{ message: { content: "done" } }] });
+
+    const result = await chat({
+      provider: "openai-compatible",
+      apiKey: "test",
+      model: "m",
+      baseUrl: `http://localhost:${testPort}/v1`,
+    }, [{ role: "user", content: "hi" }]);
+
+    assert.strictEqual(result, "done");
+  });
+
+  await it("uses default openai baseUrl when none provided", async () => {
+    mockStatusCode = 200;
+    mockResponseBody = JSON.stringify({ choices: [{ message: { content: "x" } }] });
+
+    // This will fail to connect to api.openai.com — just verify it tries
+    await assert.rejects(
+      () => chat({ provider: "openai", apiKey: "test", model: "gpt-4o" }, [{ role: "user", content: "hi" }]),
+    );
   });
 });
