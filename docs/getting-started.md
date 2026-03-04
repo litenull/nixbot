@@ -2,8 +2,10 @@
 
 ## Prerequisites
 
-- Nix with flakes enabled
-- Node.js 18+ (provided by Nix dev shell)
+- Linux or macOS environment
+- [Nix](https://nixos.org/download/) installed with flakes enabled
+- At least one LLM API key (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`)
+- Node.js 18+ (provided automatically by the Nix dev shell)
 
 ## Installation
 

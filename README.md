@@ -31,6 +31,14 @@ spawn
 </pre>
 </div>
 
+## Prerequisites
+
+Before setup, make sure you have:
+
+- Linux or macOS environment
+- [Nix](https://nixos.org/download/) installed with flakes enabled
+- At least one LLM API key (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`)
+
 ## Quick Start
 
 ```bash
