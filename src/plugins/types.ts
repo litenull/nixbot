@@ -13,5 +13,7 @@ export interface PluginHandle {
 
 export interface BotPlugin {
   name: string;
-  start: (context: PluginContext) => Promise<PluginHandle | void> | PluginHandle | void;
+  start: (
+    context: PluginContext,
+  ) => Promise<PluginHandle | void> | PluginHandle | void;
 }

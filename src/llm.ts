@@ -23,16 +23,22 @@ export interface LLMConfig {
   model: string;
 }
 
-function makeRequest(url: string, headers: Record<string, string>, body: string): Promise<string> {
+function makeRequest(
+  url: string,
+  headers: Record<string, string>,
+  body: string,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     const isHttps = url.startsWith("https");
-    const req = isHttps 
+    const req = isHttps
       ? request(url, { method: "POST", headers })
       : httpRequest(url, { method: "POST", headers });
-    
+
     req.on("response", (res) => {
       let data = "";
-      res.on("data", (chunk) => { data += chunk; });
+      res.on("data", (chunk) => {
+        data += chunk;
+      });
       res.on("end", () => {
         if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
           resolve(data);
@@ -41,22 +47,28 @@ function makeRequest(url: string, headers: Record<string, string>, body: string)
         }
       });
     });
-    
+
     req.on("error", reject);
     req.write(body);
     req.end();
   });
 }
 
-export async function chat(config: LLMConfig, messages: Array<{ role: string; content: string }>): Promise<string> {
+export async function chat(
+  config: LLMConfig,
+  messages: Array<{ role: string; content: string }>,
+): Promise<string> {
   const chatReq: ChatRequestType = {
     model: config.model,
-    messages: messages.map(m => ({ role: m.role as "system" | "user" | "assistant", content: m.content })),
+    messages: messages.map((m) => ({
+      role: m.role as "system" | "user" | "assistant",
+      content: m.content,
+    })),
     max_tokens: 4096,
   };
-  
+
   const body = JSON.stringify(chatReq);
-  
+
   if (config.provider === "anthropic") {
     const res = await makeRequest(
       "https://api.anthropic.com/v1/messages",
@@ -69,33 +81,37 @@ export async function chat(config: LLMConfig, messages: Array<{ role: string; co
       JSON.stringify({
         model: config.model,
         max_tokens: 4096,
-        messages: messages.filter(m => m.role !== "system").map(m => ({
-          role: m.role as "user" | "assistant",
-          content: m.content,
-        })),
-        system: messages.find(m => m.role === "system")?.content,
-      })
+        messages: messages
+          .filter((m) => m.role !== "system")
+          .map((m) => ({
+            role: m.role as "user" | "assistant",
+            content: m.content,
+          })),
+        system: messages.find((m) => m.role === "system")?.content,
+      }),
     );
-    
+
     const data = JSON.parse(res);
     return data.content?.[0]?.text ?? "";
   }
-  
-  const baseUrl = config.baseUrl || (config.provider === "openai" ? "https://api.openai.com" : "");
+
+  const baseUrl =
+    config.baseUrl ||
+    (config.provider === "openai" ? "https://api.openai.com" : "");
   const hasVersion = /\/v\d+\/?$/.test(baseUrl);
-  const endpoint = hasVersion 
+  const endpoint = hasVersion
     ? `${baseUrl.replace(/\/$/, "")}/chat/completions`
     : `${baseUrl.replace(/\/$/, "")}/v1/chat/completions`;
-  
+
   const res = await makeRequest(
     endpoint,
     {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${config.apiKey}`,
+      Authorization: `Bearer ${config.apiKey}`,
     },
-    body
+    body,
   );
-  
+
   const data = JSON.parse(res);
   return data.choices?.[0]?.message?.content ?? "";
 }

@@ -56,7 +56,10 @@ interface CredentialInfo {
   lastUsed?: string;
 }
 
-let credentials: Map<string, { value: string; scope?: string; lastUsed?: string }> = new Map();
+let credentials: Map<
+  string,
+  { value: string; scope?: string; lastUsed?: string }
+> = new Map();
 let key: Buffer | null = null;
 
 function ensureDir(): void {
@@ -79,30 +82,38 @@ function generateKey(): Buffer {
 function loadKey(): Buffer {
   const { keyFile } = getPaths();
   if (key) return key;
-  
+
   ensureDir();
-  
+
   if (!fs.existsSync(keyFile)) {
     key = generateKey();
     return key;
   }
-  
+
   const keyHex = fs.readFileSync(keyFile, "utf-8").trim();
   if (keyHex.length !== KEY_LENGTH * 2) {
-    throw new Error(`Invalid key file: expected ${KEY_LENGTH * 2} hex chars, got ${keyHex.length}`);
+    throw new Error(
+      `Invalid key file: expected ${KEY_LENGTH * 2} hex chars, got ${keyHex.length}`,
+    );
   }
-  
+
   key = Buffer.from(keyHex, "hex");
   return key;
 }
 
-function encrypt(plaintext: string, key: Buffer): { encrypted: string; iv: string; tag: string } {
+function encrypt(
+  plaintext: string,
+  key: Buffer,
+): { encrypted: string; iv: string; tag: string } {
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-  
-  const encrypted = Buffer.concat([cipher.update(plaintext, "utf-8"), cipher.final()]);
+
+  const encrypted = Buffer.concat([
+    cipher.update(plaintext, "utf-8"),
+    cipher.final(),
+  ]);
   const tag = cipher.getAuthTag();
-  
+
   return {
     encrypted: encrypted.toString("base64"),
     iv: iv.toString("base64"),
@@ -110,42 +121,51 @@ function encrypt(plaintext: string, key: Buffer): { encrypted: string; iv: strin
   };
 }
 
-function decrypt(encrypted: string, iv: string, tag: string, key: Buffer): string {
+function decrypt(
+  encrypted: string,
+  iv: string,
+  tag: string,
+  key: Buffer,
+): string {
   const decipher = crypto.createDecipheriv(
     ALGORITHM,
     key,
-    Buffer.from(iv, "base64")
+    Buffer.from(iv, "base64"),
   );
   decipher.setAuthTag(Buffer.from(tag, "base64"));
-  
+
   const decrypted = Buffer.concat([
     decipher.update(Buffer.from(encrypted, "base64")),
     decipher.final(),
   ]);
-  
+
   return decrypted.toString("utf-8");
 }
 
 export function loadCredentials(): void {
   const { credsFile } = getPaths();
   const k = loadKey();
-  
+
   if (!fs.existsSync(credsFile)) {
     const empty: CredentialsFile = { version: 1, credentials: {} };
-    fs.writeFileSync(credsFile, JSON.stringify(empty, null, 2), { mode: 0o600 });
+    fs.writeFileSync(credsFile, JSON.stringify(empty, null, 2), {
+      mode: 0o600,
+    });
     credentials = new Map();
     return;
   }
-  
+
   try {
-    const data: CredentialsFile = JSON.parse(fs.readFileSync(credsFile, "utf-8"));
-    
+    const data: CredentialsFile = JSON.parse(
+      fs.readFileSync(credsFile, "utf-8"),
+    );
+
     if (data.version !== 1) {
       throw new Error(`Unsupported credentials version: ${data.version}`);
     }
-    
+
     credentials = new Map();
-    
+
     for (const [name, entry] of Object.entries(data.credentials)) {
       try {
         const value = decrypt(entry.encrypted, entry.iv, entry.tag, k);
@@ -155,7 +175,9 @@ export function loadCredentials(): void {
           lastUsed: entry.lastUsed,
         });
       } catch (err) {
-        throw new Error(`Failed to decrypt credential '${name}': ${(err as Error).message}`);
+        throw new Error(
+          `Failed to decrypt credential '${name}': ${(err as Error).message}`,
+        );
       }
     }
   } catch (err) {
@@ -169,12 +191,12 @@ export function loadCredentials(): void {
 function saveCredentials(): void {
   const { credsFile } = getPaths();
   const k = loadKey();
-  
+
   const data: CredentialsFile = {
     version: 1,
     credentials: {},
   };
-  
+
   for (const [name, { value, scope, lastUsed }] of credentials) {
     const { encrypted, iv, tag } = encrypt(value, k);
     data.credentials[name] = {
@@ -185,7 +207,7 @@ function saveCredentials(): void {
       lastUsed,
     };
   }
-  
+
   fs.writeFileSync(credsFile, JSON.stringify(data, null, 2), { mode: 0o600 });
 }
 
@@ -193,7 +215,11 @@ export function getCredential(name: string): string | undefined {
   return credentials.get(name)?.value;
 }
 
-export function setCredential(name: string, value: string, scope?: string): void {
+export function setCredential(
+  name: string,
+  value: string,
+  scope?: string,
+): void {
   credentials.set(name, { value, scope, lastUsed: new Date().toISOString() });
   saveCredentials();
 }
@@ -225,31 +251,33 @@ export function detectRequiredCreds(command: string): string[] {
   const vars = new Set<string>();
   let match;
   const pattern = new RegExp(ENV_VAR_PATTERN.source, "g");
-  
+
   while ((match = pattern.exec(command)) !== null) {
     vars.add(match[1]);
   }
-  
+
   return Array.from(vars);
 }
 
 export function maskCredentials(text: string, vars: string[]): string {
   let masked = text;
-  
+
   for (const varName of vars) {
     const value = credentials.get(varName)?.value;
     if (value && masked.includes(value)) {
       masked = masked.split(value).join("***");
     }
   }
-  
+
   return masked;
 }
 
-export function getRequiredCredsForCommand(command: string): Record<string, string> {
+export function getRequiredCredsForCommand(
+  command: string,
+): Record<string, string> {
   const vars = detectRequiredCreds(command);
   const env: Record<string, string> = {};
-  
+
   for (const varName of vars) {
     const value = getCredential(varName);
     if (value) {
@@ -257,6 +285,6 @@ export function getRequiredCredsForCommand(command: string): Record<string, stri
       updateLastUsed(varName);
     }
   }
-  
+
   return env;
 }

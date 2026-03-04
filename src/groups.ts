@@ -23,30 +23,59 @@ export function initGroupsTable(db: Database.Database): void {
   `);
 }
 
-export function getGroup(db: Database.Database, name: string): GroupInfo | undefined {
-  const row = db.prepare("SELECT name, context_path FROM groups WHERE name = ?").get(name) as { name: string; context_path: string } | undefined;
+export function getGroup(
+  db: Database.Database,
+  name: string,
+): GroupInfo | undefined {
+  const row = db
+    .prepare("SELECT name, context_path FROM groups WHERE name = ?")
+    .get(name) as { name: string; context_path: string } | undefined;
   if (!row) return undefined;
   return { name: row.name, contextPath: row.context_path };
 }
 
-export function registerGroup(db: Database.Database, name: string, contextPath: string): void {
-  db.prepare("INSERT OR REPLACE INTO groups (name, context_path) VALUES (?, ?)").run(name, contextPath);
+export function registerGroup(
+  db: Database.Database,
+  name: string,
+  contextPath: string,
+): void {
+  db.prepare(
+    "INSERT OR REPLACE INTO groups (name, context_path) VALUES (?, ?)",
+  ).run(name, contextPath);
 }
 
 export function listGroups(db: Database.Database): GroupInfo[] {
-  const rows = db.prepare("SELECT name, context_path FROM groups").all() as Array<{ name: string; context_path: string }>;
-  return rows.map(row => ({ name: row.name, contextPath: row.context_path }));
+  const rows = db
+    .prepare("SELECT name, context_path FROM groups")
+    .all() as Array<{ name: string; context_path: string }>;
+  return rows.map((row) => ({ name: row.name, contextPath: row.context_path }));
 }
 
-export function addMessage(db: Database.Database, group: string, role: "user" | "assistant", content: string): void {
-  db.prepare("INSERT INTO messages (group_name, role, content) VALUES (?, ?, ?)").run(group, role, content);
+export function addMessage(
+  db: Database.Database,
+  group: string,
+  role: "user" | "assistant",
+  content: string,
+): void {
+  db.prepare(
+    "INSERT INTO messages (group_name, role, content) VALUES (?, ?, ?)",
+  ).run(group, role, content);
 }
 
-export function getHistory(db: Database.Database, group: string, limit = 50): Array<{ role: string; content: string }> {
-  return db.prepare(`
+export function getHistory(
+  db: Database.Database,
+  group: string,
+  limit = 50,
+): Array<{ role: string; content: string }> {
+  return db
+    .prepare(
+      `
     SELECT role, content FROM messages
     WHERE group_name = ?
     ORDER BY created_at DESC
     LIMIT ?
-  `).all(group, limit).reverse() as Array<{ role: string; content: string }>;
+  `,
+    )
+    .all(group, limit)
+    .reverse() as Array<{ role: string; content: string }>;
 }

@@ -48,7 +48,9 @@ export function parseAllowedChatIds(raw?: string): Set<number> | null {
 }
 
 export function parseGroupCommand(text: string): string | null {
-  const match = text.trim().match(/^\/group(?:@[A-Za-z0-9_]+)?\s+([A-Za-z0-9_-]+)$/);
+  const match = text
+    .trim()
+    .match(/^\/group(?:@[A-Za-z0-9_]+)?\s+([A-Za-z0-9_-]+)$/);
   return match ? match[1] : null;
 }
 
@@ -76,7 +78,11 @@ export function splitTelegramMessage(text: string, maxLen = 4000): string[] {
   return chunks;
 }
 
-async function getUpdates(token: string, offset: number, timeoutSeconds: number): Promise<TelegramUpdate[]> {
+async function getUpdates(
+  token: string,
+  offset: number,
+  timeoutSeconds: number,
+): Promise<TelegramUpdate[]> {
   const res = await fetch(telegramApiUrl(token, "getUpdates"), {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -99,7 +105,11 @@ async function getUpdates(token: string, offset: number, timeoutSeconds: number)
   return data.result;
 }
 
-async function sendMessage(token: string, chatId: number, text: string): Promise<void> {
+async function sendMessage(
+  token: string,
+  chatId: number,
+  text: string,
+): Promise<void> {
   const res = await fetch(telegramApiUrl(token, "sendMessage"), {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -136,7 +146,9 @@ export const telegramPlugin: BotPlugin = {
 
     const token = telegramEnv.token;
     if (!token) {
-      context.log("[plugin:telegram] Skipping (NIXBOT_TELEGRAM_BOT_TOKEN is not set)");
+      context.log(
+        "[plugin:telegram] Skipping (NIXBOT_TELEGRAM_BOT_TOKEN is not set)",
+      );
       return;
     }
 
@@ -154,7 +166,11 @@ export const telegramPlugin: BotPlugin = {
 
       while (!stopped) {
         try {
-          const updates = await getUpdates(token, offset, telegramEnv.pollTimeoutSeconds);
+          const updates = await getUpdates(
+            token,
+            offset,
+            telegramEnv.pollTimeoutSeconds,
+          );
 
           for (const update of updates) {
             offset = Math.max(offset, update.update_id + 1);
@@ -189,7 +205,11 @@ export const telegramPlugin: BotPlugin = {
             if (requestedGroup) {
               context.ensureGroup(requestedGroup);
               chatGroupMap.set(chatId, requestedGroup);
-              await sendMessage(token, chatId, `Group set to '${requestedGroup}'.`);
+              await sendMessage(
+                token,
+                chatId,
+                `Group set to '${requestedGroup}'.`,
+              );
               continue;
             }
 

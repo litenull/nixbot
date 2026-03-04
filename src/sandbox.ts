@@ -23,10 +23,12 @@ export const envBlocklist: EnvBlocklistEntry[] = [
 ];
 
 export function isBlockedEnvVar(key: string): boolean {
-  return envBlocklist.some(entry => entry.pattern.test(key));
+  return envBlocklist.some((entry) => entry.pattern.test(key));
 }
 
-export function filterEnvVars(env: Record<string, string | undefined>): Record<string, string> {
+export function filterEnvVars(
+  env: Record<string, string | undefined>,
+): Record<string, string> {
   const safeEnv: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
     if (value !== undefined && !isBlockedEnvVar(key)) {
@@ -46,7 +48,10 @@ export interface SandboxResult {
 export interface SandboxOptions {
   inputBuffer?: InputBuffer;
   pollIntervalMs?: number;
-  onFeedback?: (feedback: string, context: { command: string; partialOutput: string }) => Promise<void>;
+  onFeedback?: (
+    feedback: string,
+    context: { command: string; partialOutput: string },
+  ) => Promise<void>;
 }
 
 export function runInSandbox(
@@ -54,10 +59,16 @@ export function runInSandbox(
   group: string,
   command: string,
   timeout = 60000,
-  options?: SandboxOptions
+  options?: SandboxOptions,
 ): Promise<SandboxResult> {
   return new Promise((resolve) => {
-    const workspace = join(process.env.HOME || "/tmp", ".bwrapper", "nixbot", "groups", group);
+    const workspace = join(
+      process.env.HOME || "/tmp",
+      ".bwrapper",
+      "nixbot",
+      "groups",
+      group,
+    );
     mkdirSync(workspace, { recursive: true });
 
     const safeEnv = filterEnvVars(process.env);
@@ -78,8 +89,12 @@ export function runInSandbox(
     let stderr = "";
     let interrupted = false;
 
-    proc.stdout.on("data", (data) => { stdout += data; });
-    proc.stderr.on("data", (data) => { stderr += data; });
+    proc.stdout.on("data", (data) => {
+      stdout += data;
+    });
+    proc.stderr.on("data", (data) => {
+      stderr += data;
+    });
 
     const timer = setTimeout(() => {
       proc.kill("SIGTERM");
@@ -92,7 +107,10 @@ export function runInSandbox(
       const pollInterval = options.pollIntervalMs || 500;
       pollTimer = setInterval(async () => {
         try {
-          if (options.inputBuffer!.isPauseRequested() || options.inputBuffer!.isCancelRequested()) {
+          if (
+            options.inputBuffer!.isPauseRequested() ||
+            options.inputBuffer!.isCancelRequested()
+          ) {
             proc.kill("SIGTERM");
             interrupted = true;
             stderr += "\n[Interrupted by user]";
@@ -101,7 +119,9 @@ export function runInSandbox(
           }
 
           if (options.inputBuffer!.hasPending() && options?.onFeedback) {
-            const feedbackItems = options.inputBuffer!.popAll().filter(f => f !== "__CANCEL__" && f !== "__PAUSE__");
+            const feedbackItems = options
+              .inputBuffer!.popAll()
+              .filter((f) => f !== "__CANCEL__" && f !== "__PAUSE__");
             if (feedbackItems.length > 0) {
               const feedback = feedbackItems.join("\n");
               const partialOutput = (stdout + stderr).slice(-1000);
@@ -131,7 +151,7 @@ export interface SupervisorContext {
 export async function handleLiveFeedback(
   feedback: string,
   context: { command: string; partialOutput: string },
-  supervisorContext: SupervisorContext
+  supervisorContext: SupervisorContext,
 ): Promise<string> {
   const supervisorPrompt = `You are a supervisor monitoring an agent that is currently working on a task.
 

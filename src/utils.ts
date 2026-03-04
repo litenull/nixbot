@@ -19,7 +19,10 @@ export function truncateOutput(output: string, maxLength = 2000): string {
   return output;
 }
 
-export function ensureGroupDir(groupsDir: string, name: string): { groupPath: string; claudeMdPath: string } {
+export function ensureGroupDir(
+  groupsDir: string,
+  name: string,
+): { groupPath: string; claudeMdPath: string } {
   const groupPath = join(groupsDir, name);
   mkdirSync(groupPath, { recursive: true });
   const claudeMdPath = join(groupPath, "CLAUDE.md");

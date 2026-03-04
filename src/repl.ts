@@ -82,7 +82,12 @@ interface PauseResult {
   partialResponse: string;
 }
 
-export async function processMessage(group: string, message: string, llmConfig: LLMConfig, options?: ProcessMessageOptions): Promise<string | PauseResult> {
+export async function processMessage(
+  group: string,
+  message: string,
+  llmConfig: LLMConfig,
+  options?: ProcessMessageOptions,
+): Promise<string | PauseResult> {
   addMessage(db, group, "user", message);
   logTapeAction(db, group, "llm_request", message);
 
@@ -95,7 +100,9 @@ export async function processMessage(group: string, message: string, llmConfig: 
 
   const history = getHistory(db, group, 20);
   const contextPath = join(groupInfo.contextPath, "CLAUDE.md");
-  const context = existsSync(contextPath) ? readFileSync(contextPath, "utf-8") : "";
+  const context = existsSync(contextPath)
+    ? readFileSync(contextPath, "utf-8")
+    : "";
 
   const systemPrompt = `You are a helpful assistant working in a sandboxed environment.
 
@@ -191,12 +198,22 @@ CRON COMMANDS (use these, NOT system crontab):
       onFeedback: async (feedback, context) => {
         logTapeAction(db, group, "feedback", feedback);
         console.log(`\x1b[36m↳ Processing: ${feedback.slice(0, 40)}...\x1b[0m`);
-        const supervisorResponse = await handleLiveFeedback(feedback, context, supervisorContext);
+        const supervisorResponse = await handleLiveFeedback(
+          feedback,
+          context,
+          supervisorContext,
+        );
         console.log(`\x1b[34m💬 ${supervisorResponse}\x1b[0m`);
       },
     };
 
-    const result = await runInSandbox(config.sandboxBin, group, cmd, 60000, sandboxOptions);
+    const result = await runInSandbox(
+      config.sandboxBin,
+      group,
+      cmd,
+      60000,
+      sandboxOptions,
+    );
 
     if (options?.inputBuffer) {
       options.inputBuffer.disable();
@@ -205,11 +222,15 @@ CRON COMMANDS (use these, NOT system crontab):
     if (options?.inputBuffer?.isPauseRequested()) {
       options.inputBuffer.consumePause();
       logTapeAction(db, group, "pause", "User requested pause");
-      console.log("\x1b[35m⏸️  Paused. Type 'resume' to continue or give new instructions.\x1b[0m");
+      console.log(
+        "\x1b[35m⏸️  Paused. Type 'resume' to continue or give new instructions.\x1b[0m",
+      );
 
       const partialOutput = result.interrupted
-        ? (result.stdout.trim() || result.stderr.trim() || "(command interrupted)")
-        : (result.stdout.trim() || result.stderr.trim() || "(no output)");
+        ? result.stdout.trim() ||
+          result.stderr.trim() ||
+          "(command interrupted)"
+        : result.stdout.trim() || result.stderr.trim() || "(no output)";
       accumulatedResponse += `\n\n\`\`\`output\n${truncateOutput(partialOutput)}\n\`\`\``;
 
       return {
@@ -222,12 +243,16 @@ CRON COMMANDS (use these, NOT system crontab):
       options.inputBuffer.consumeCancel();
       logTapeAction(db, group, "cancel", "User cancelled execution");
       accumulatedResponse += "\n\n[Execution cancelled by user]";
-      const maskedResponse = maskCredentials(accumulatedResponse, allDetectedVars);
+      const maskedResponse = maskCredentials(
+        accumulatedResponse,
+        allDetectedVars,
+      );
       addMessage(db, group, "assistant", maskedResponse);
       return maskedResponse;
     }
 
-    const output = result.stdout.trim() || result.stderr.trim() || "(no output)";
+    const output =
+      result.stdout.trim() || result.stderr.trim() || "(no output)";
     const truncated = truncateOutput(output);
     accumulatedResponse += `\n\n\`\`\`output\n${truncated}\n\`\`\``;
     logTapeAction(db, group, "output", truncated);
@@ -240,7 +265,11 @@ CRON COMMANDS (use these, NOT system crontab):
   return maskedResponse;
 }
 
-function processCronCommands(db: Database.Database, group: string, response: string): string {
+function processCronCommands(
+  db: Database.Database,
+  group: string,
+  response: string,
+): string {
   let result = response;
 
   const cronAddPattern = /\/cron add (\S+) '([^']+)' '([^']+)'/g;
@@ -276,9 +305,12 @@ function processCronCommands(db: Database.Database, group: string, response: str
     if (jobs.length === 0) {
       result += `\n\n[No cron jobs scheduled]`;
     } else {
-      const jobList = jobs.map(j =>
-        `- ${j.name}: ${j.schedule} (${j.enabled ? "enabled" : "disabled"}, next: ${j.nextRun?.toLocaleString() || "N/A"})`
-      ).join("\n");
+      const jobList = jobs
+        .map(
+          (j) =>
+            `- ${j.name}: ${j.schedule} (${j.enabled ? "enabled" : "disabled"}, next: ${j.nextRun?.toLocaleString() || "N/A"})`,
+        )
+        .join("\n");
       result += `\n\n[Cron jobs:]\n${jobList}`;
     }
   }
@@ -287,19 +319,29 @@ function processCronCommands(db: Database.Database, group: string, response: str
 }
 
 let schedulerInterval: ReturnType<typeof setInterval> | null = null;
-let schedulerCallback: ((group: string, prompt: string) => Promise<void>) | null = null;
+let schedulerCallback:
+  | ((group: string, prompt: string) => Promise<void>)
+  | null = null;
 
-export function startScheduler(callback: (group: string, prompt: string) => Promise<void>, intervalMs = 60000): void {
+export function startScheduler(
+  callback: (group: string, prompt: string) => Promise<void>,
+  intervalMs = 60000,
+): void {
   schedulerCallback = callback;
   schedulerInterval = setInterval(async () => {
     const dueJobs = getDueJobs(db);
     for (const job of dueJobs) {
-      console.log(`[cron] Running job '${job.name}' in group '${job.groupName}'`);
+      console.log(
+        `[cron] Running job '${job.name}' in group '${job.groupName}'`,
+      );
       try {
         await schedulerCallback!(job.groupName, job.prompt);
         updateJobLastRun(db, job.id);
       } catch (err) {
-        console.error(`[cron] Job '${job.name}' failed:`, (err as Error).message);
+        console.error(
+          `[cron] Job '${job.name}' failed:`,
+          (err as Error).message,
+        );
       }
     }
   }, intervalMs);
@@ -334,7 +376,9 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
   console.log("    /list           - List groups");
   console.log("    /history        - Show conversation history");
   console.log("    /cred list      - List stored credentials");
-  console.log("    /cred add <NAME> [SCOPE] - Add credential (prompts for value)");
+  console.log(
+    "    /cred add <NAME> [SCOPE] - Add credential (prompts for value)",
+  );
   console.log("    /cred remove <NAME> - Remove credential");
   console.log("    /cron list [group] - List cron jobs");
   console.log("    /cron add <NAME> <SCHEDULE> <PROMPT> - Add job");
@@ -350,7 +394,11 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
   console.log("    Ctrl+C to cancel current task\n");
 
   let currentGroup = "main";
-  let pausedState: { group: string; partialResponse: string; originalMessage: string } | null = null;
+  let pausedState: {
+    group: string;
+    partialResponse: string;
+    originalMessage: string;
+  } | null = null;
 
   cleanExpiredTapeEntries(db);
 
@@ -384,7 +432,9 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
       const history = getHistory(db, currentGroup, 10);
       for (const h of history) {
         const preview = h.content.slice(0, 80).replace(/\n/g, " ");
-        console.log(`  ${h.role}: ${preview}${h.content.length > 80 ? "..." : ""}`);
+        console.log(
+          `  ${h.role}: ${preview}${h.content.length > 80 ? "..." : ""}`,
+        );
       }
       continue;
     }
@@ -396,9 +446,13 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
       } else {
         console.log("Stored credentials:");
         for (const c of creds) {
-          const lastUsed = c.lastUsed ? new Date(c.lastUsed).toLocaleString() : "never";
+          const lastUsed = c.lastUsed
+            ? new Date(c.lastUsed).toLocaleString()
+            : "never";
           const scope = c.scope || "-";
-          console.log(`  ${c.name}  [scope: ${scope}]  [last used: ${lastUsed}]`);
+          console.log(
+            `  ${c.name}  [scope: ${scope}]  [last used: ${lastUsed}]`,
+          );
         }
       }
       continue;
@@ -440,7 +494,9 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
     }
 
     if (input.startsWith("/cred ")) {
-      console.log("Usage: /cred list | /cred add <NAME> [SCOPE] | /cred remove <NAME>");
+      console.log(
+        "Usage: /cred list | /cred add <NAME> [SCOPE] | /cred remove <NAME>",
+      );
       continue;
     }
 
@@ -453,12 +509,18 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
         console.log("Cron jobs:");
         for (const job of jobs) {
           const status = job.enabled ? "enabled" : "disabled";
-          const lastRun = job.lastRun ? new Date(job.lastRun).toLocaleString() : "never";
-          const nextRun = job.nextRun ? new Date(job.nextRun).toLocaleString() : "N/A";
+          const lastRun = job.lastRun
+            ? new Date(job.lastRun).toLocaleString()
+            : "never";
+          const nextRun = job.nextRun
+            ? new Date(job.nextRun).toLocaleString()
+            : "N/A";
           console.log(`  ${job.name} [${job.groupName}] [${status}]`);
           console.log(`    schedule: ${job.schedule}`);
           console.log(`    last: ${lastRun}, next: ${nextRun}`);
-          console.log(`    prompt: ${job.prompt.slice(0, 50)}${job.prompt.length > 50 ? "..." : ""}`);
+          console.log(
+            `    prompt: ${job.prompt.slice(0, 50)}${job.prompt.length > 50 ? "..." : ""}`,
+          );
         }
       }
       continue;
@@ -469,8 +531,12 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
       const firstSpace = args.indexOf(" ");
       if (firstSpace === -1) {
         console.log("Usage: /cron add <NAME> <SCHEDULE> <PROMPT>");
-        console.log("Schedule format: minute hour day-of-month month day-of-week");
-        console.log("Example: /cron add check-api '0 * * * *' 'Check if the API is responding'");
+        console.log(
+          "Schedule format: minute hour day-of-month month day-of-week",
+        );
+        console.log(
+          "Example: /cron add check-api '0 * * * *' 'Check if the API is responding'",
+        );
         continue;
       }
       const name = args.slice(0, firstSpace);
@@ -500,13 +566,17 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
       }
 
       if (getCronJobByName(db, name)) {
-        console.log(`Job '${name}' already exists. Use /cron remove ${name} first.`);
+        console.log(
+          `Job '${name}' already exists. Use /cron remove ${name} first.`,
+        );
         continue;
       }
 
       addCronJob(db, { groupName: currentGroup, name, schedule, prompt });
       const nextRun = calculateNextRun(schedule);
-      console.log(`Job '${name}' added. Next run: ${nextRun?.toLocaleString() || "N/A"}`);
+      console.log(
+        `Job '${name}' added. Next run: ${nextRun?.toLocaleString() || "N/A"}`,
+      );
       continue;
     }
 
@@ -551,7 +621,9 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
       console.log("  /cron add <NAME> <SCHEDULE> <PROMPT>");
       console.log("  /cron remove <NAME>");
       console.log("  /cron enable|disable <NAME>");
-      console.log("Schedule: minute hour day-of-month month day-of-week (e.g., '0 * * * *' = hourly)");
+      console.log(
+        "Schedule: minute hour day-of-month month day-of-week (e.g., '0 * * * *' = hourly)",
+      );
       continue;
     }
 
@@ -570,15 +642,24 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
         console.log("Usage: /tape search <query>");
         continue;
       }
-      const entries = queryTapeLog(db, { groupName: currentGroup, search: query, limit: 20 });
+      const entries = queryTapeLog(db, {
+        groupName: currentGroup,
+        search: query,
+        limit: 20,
+      });
       if (entries.length === 0) {
         console.log("No matching entries found.");
       } else {
         console.log(`\nFound ${entries.length} entries:\n`);
         for (const entry of entries) {
           const time = entry.createdAt.toLocaleString();
-          const preview = entry.content.length > 80 ? entry.content.slice(0, 80) + "..." : entry.content;
-          console.log(`[${time}] ${entry.actionType}: ${preview.replace(/\n/g, " ")}`);
+          const preview =
+            entry.content.length > 80
+              ? entry.content.slice(0, 80) + "..."
+              : entry.content;
+          console.log(
+            `[${time}] ${entry.actionType}: ${preview.replace(/\n/g, " ")}`,
+          );
         }
       }
       continue;
@@ -588,7 +669,9 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
       const stats = getTapeStats(db);
       console.log("\nTape Log Statistics:");
       console.log(`  Total entries: ${stats.totalEntries}`);
-      console.log(`  Oldest entry: ${stats.oldestEntry?.toLocaleString() || "N/A"}`);
+      console.log(
+        `  Oldest entry: ${stats.oldestEntry?.toLocaleString() || "N/A"}`,
+      );
       console.log(`  Expiring soon (< 3 days): ${stats.entriesExpiringSoon}`);
       console.log("  By type:");
       for (const [type, count] of Object.entries(stats.entriesByType)) {
@@ -599,7 +682,9 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
 
     if (input.startsWith("/tape ")) {
       console.log("Usage:");
-      console.log("  /tape recent [hours] - Show recent activity (default: 24h)");
+      console.log(
+        "  /tape recent [hours] - Show recent activity (default: 24h)",
+      );
       console.log("  /tape search <query> - Search tape logs");
       console.log("  /tape stats - Show tape statistics");
       continue;
@@ -624,13 +709,16 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
       const group = input.slice(1, spaceIdx);
       const msg = input.slice(spaceIdx + 1);
       if (!getGroup(db, group)) {
-        console.log(`Unknown group: ${group}. Create it first with /add ${group}`);
+        console.log(
+          `Unknown group: ${group}. Create it first with /add ${group}`,
+        );
         continue;
       }
       currentGroup = group;
       const response = await processMessage(group, msg, llmConfig, {
         inputBuffer,
-        onFeedback: (fb) => console.log(`\x1b[36m[Feedback: ${fb.slice(0, 30)}...]\x1b[0m`),
+        onFeedback: (fb) =>
+          console.log(`\x1b[36m[Feedback: ${fb.slice(0, 30)}...]\x1b[0m`),
       });
       console.log(`\n${response}\n`);
       continue;
@@ -644,18 +732,33 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
     }
 
     if (input.trim()) {
-      if (pausedState && (input.toLowerCase() === "resume" || input.toLowerCase() === "continue")) {
+      if (
+        pausedState &&
+        (input.toLowerCase() === "resume" || input.toLowerCase() === "continue")
+      ) {
         console.log("\x1b[32m▶️  Resuming...\x1b[0m");
         logTapeAction(db, currentGroup, "resume", "User resumed execution");
         const resumeMessage = "Continue from where you left off.";
         try {
-          const response = await processMessage(currentGroup, resumeMessage, llmConfig, {
-            inputBuffer,
-            onFeedback: (fb) => console.log(`\x1b[36m[Feedback: ${fb.slice(0, 30)}...]\x1b[0m`),
-          });
+          const response = await processMessage(
+            currentGroup,
+            resumeMessage,
+            llmConfig,
+            {
+              inputBuffer,
+              onFeedback: (fb) =>
+                console.log(`\x1b[36m[Feedback: ${fb.slice(0, 30)}...]\x1b[0m`),
+            },
+          );
           if (typeof response === "object" && response.type === "paused") {
-            pausedState = { group: currentGroup, partialResponse: response.partialResponse, originalMessage: input };
-            console.log("\n\x1b[35m⏸️  Paused again. Type 'resume' to continue.\x1b[0m\n");
+            pausedState = {
+              group: currentGroup,
+              partialResponse: response.partialResponse,
+              originalMessage: input,
+            };
+            console.log(
+              "\n\x1b[35m⏸️  Paused again. Type 'resume' to continue.\x1b[0m\n",
+            );
           } else {
             pausedState = null;
             console.log(`\n${response}\n`);
@@ -667,18 +770,27 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
       }
 
       if (pausedState) {
-        console.log("\x1b[33m⏸️  You have a paused task. Type 'resume' to continue, or give new instructions.\x1b[0m");
+        console.log(
+          "\x1b[33m⏸️  You have a paused task. Type 'resume' to continue, or give new instructions.\x1b[0m",
+        );
         pausedState = null;
       }
 
       try {
         const response = await processMessage(currentGroup, input, llmConfig, {
           inputBuffer,
-          onFeedback: (fb) => console.log(`\x1b[36m[Feedback: ${fb.slice(0, 30)}...]\x1b[0m`),
+          onFeedback: (fb) =>
+            console.log(`\x1b[36m[Feedback: ${fb.slice(0, 30)}...]\x1b[0m`),
         });
         if (typeof response === "object" && response.type === "paused") {
-          pausedState = { group: currentGroup, partialResponse: response.partialResponse, originalMessage: input };
-          console.log("\n\x1b[35m⏸️  Paused. Type 'resume' to continue or give new instructions.\x1b[0m\n");
+          pausedState = {
+            group: currentGroup,
+            partialResponse: response.partialResponse,
+            originalMessage: input,
+          };
+          console.log(
+            "\n\x1b[35m⏸️  Paused. Type 'resume' to continue or give new instructions.\x1b[0m\n",
+          );
         } else {
           console.log(`\n${response}\n`);
         }

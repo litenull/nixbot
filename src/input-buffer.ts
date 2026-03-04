@@ -1,12 +1,23 @@
 export const PAUSE_KEYWORDS = [
-  "pause", "wait", "hold on", "stop", "hang on", "hold up",
-  "give me a moment", "hold it", "freeze",
+  "pause",
+  "wait",
+  "hold on",
+  "stop",
+  "hang on",
+  "hold up",
+  "give me a moment",
+  "hold it",
+  "freeze",
 ];
 
 export function isPauseInput(input: string): boolean {
   const lower = input.toLowerCase().trim();
-  return PAUSE_KEYWORDS.some(kw =>
-    lower === kw || lower.startsWith(kw + " ") || lower.includes(" " + kw + " ") || lower.endsWith(" " + kw)
+  return PAUSE_KEYWORDS.some(
+    (kw) =>
+      lower === kw ||
+      lower.startsWith(kw + " ") ||
+      lower.includes(" " + kw + " ") ||
+      lower.endsWith(" " + kw),
   );
 }
 
@@ -129,6 +140,7 @@ export class InputBuffer {
   }
 
   getPendingCount(): number {
-    return this.queue.filter(s => s !== "__CANCEL__" && s !== "__PAUSE__").length;
+    return this.queue.filter((s) => s !== "__CANCEL__" && s !== "__PAUSE__")
+      .length;
   }
 }

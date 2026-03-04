@@ -16,7 +16,9 @@ function parseEnabledPlugins(raw: string | undefined): string[] {
     .filter(Boolean);
 }
 
-export async function startPlugins(context: PluginContext): Promise<() => Promise<void>> {
+export async function startPlugins(
+  context: PluginContext,
+): Promise<() => Promise<void>> {
   const enabled = parseEnabledPlugins(process.env.NIXBOT_PLUGINS);
 
   if (enabled.length === 0) {
@@ -39,7 +41,9 @@ export async function startPlugins(context: PluginContext): Promise<() => Promis
         handles.push(handle);
       }
     } catch (err) {
-      context.log(`[plugins] Failed to start '${name}': ${(err as Error).message}`);
+      context.log(
+        `[plugins] Failed to start '${name}': ${(err as Error).message}`,
+      );
     }
   }
 
