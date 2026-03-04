@@ -13,7 +13,7 @@ NanoClaw-inspired agent isolation using Nix + nix-bwrapper.
 │  │  - REPL/CLI interface         │  │
 │  │  - SQLite (messages, groups)  │  │
 │  │  - LLM API integration        │  │
-│  │  - Tape logging (30d)          │  │
+│  │  - Tape logging (30d)         │  │
 │  │  - Spawns bwrap per task      │  │
 │  └──────────────┬────────────────┘  │
 └─────────────────┼───────────────────┘
