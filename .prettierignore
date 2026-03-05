@@ -1,0 +1,7 @@
+dist/
+node_modules/
+data/
+groups/
+result/
+package-lock.json
+flake.lock

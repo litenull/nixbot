@@ -1,5 +1,8 @@
 import Database from "better-sqlite3";
 
+// Constants for group management
+const DEFAULT_HISTORY_LIMIT = 50;
+
 export interface GroupInfo {
   name: string;
   contextPath: string;
@@ -23,14 +26,25 @@ export function initGroupsTable(db: Database.Database): void {
   `);
 }
 
+interface GroupRow {
+  name: string;
+  context_path: string;
+}
+
+function isGroupRow(row: unknown): row is GroupRow {
+  if (typeof row !== "object" || row === null) return false;
+  const r = row as Record<string, unknown>;
+  return typeof r.name === "string" && typeof r.context_path === "string";
+}
+
 export function getGroup(
   db: Database.Database,
   name: string,
 ): GroupInfo | undefined {
   const row = db
     .prepare("SELECT name, context_path FROM groups WHERE name = ?")
-    .get(name) as { name: string; context_path: string } | undefined;
-  if (!row) return undefined;
+    .get(name);
+  if (!isGroupRow(row)) return undefined;
   return { name: row.name, contextPath: row.context_path };
 }
 
@@ -45,10 +59,10 @@ export function registerGroup(
 }
 
 export function listGroups(db: Database.Database): GroupInfo[] {
-  const rows = db
-    .prepare("SELECT name, context_path FROM groups")
-    .all() as Array<{ name: string; context_path: string }>;
-  return rows.map((row) => ({ name: row.name, contextPath: row.context_path }));
+  const rows = db.prepare("SELECT name, context_path FROM groups").all();
+  return rows
+    .filter(isGroupRow)
+    .map((row) => ({ name: row.name, contextPath: row.context_path }));
 }
 
 export function addMessage(
@@ -62,12 +76,23 @@ export function addMessage(
   ).run(group, role, content);
 }
 
+interface MessageRow {
+  role: string;
+  content: string;
+}
+
+function isMessageRow(row: unknown): row is MessageRow {
+  if (typeof row !== "object" || row === null) return false;
+  const r = row as Record<string, unknown>;
+  return typeof r.role === "string" && typeof r.content === "string";
+}
+
 export function getHistory(
   db: Database.Database,
   group: string,
-  limit = 50,
+  limit = DEFAULT_HISTORY_LIMIT,
 ): Array<{ role: string; content: string }> {
-  return db
+  const rows = db
     .prepare(
       `
     SELECT role, content FROM messages
@@ -77,5 +102,6 @@ export function getHistory(
   `,
     )
     .all(group, limit)
-    .reverse() as Array<{ role: string; content: string }>;
+    .reverse();
+  return rows.filter(isMessageRow);
 }

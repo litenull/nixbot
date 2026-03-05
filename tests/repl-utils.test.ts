@@ -3,13 +3,19 @@ import assert from "node:assert";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { extractBashBlocks, truncateOutput, ensureGroupDir } from "../src/utils.js";
+import {
+  extractBashBlocks,
+  truncateOutput,
+  ensureGroupDir,
+} from "../src/utils.js";
 import { isPauseInput } from "../src/input-buffer.js";
 
-const TEST_DIR = path.join(os.tmpdir(), `nixbot-repl-utils-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+const TEST_DIR = path.join(
+  os.tmpdir(),
+  `nixbot-repl-utils-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+);
 
 await describe("repl utilities", async () => {
-
   await beforeEach(() => {
     fs.mkdirSync(TEST_DIR, { recursive: true });
   });
@@ -21,7 +27,6 @@ await describe("repl utilities", async () => {
   });
 
   await describe("ensureGroupDir", async () => {
-
     await it("creates group directory", async () => {
       const groupsDir = path.join(TEST_DIR, "groups");
       const { groupPath } = ensureGroupDir(groupsDir, "test-group");
@@ -63,12 +68,14 @@ await describe("repl utilities", async () => {
       const result = ensureGroupDir(groupsDir, "my-group");
 
       assert.strictEqual(result.groupPath, path.join(groupsDir, "my-group"));
-      assert.strictEqual(result.claudeMdPath, path.join(groupsDir, "my-group", "CLAUDE.md"));
+      assert.strictEqual(
+        result.claudeMdPath,
+        path.join(groupsDir, "my-group", "CLAUDE.md"),
+      );
     });
   });
 
   await describe("extractBashBlocks", async () => {
-
     await it("extracts single bash block", async () => {
       const text = "Here's a command:\n```bash\necho hello\n```\nDone.";
       const blocks = extractBashBlocks(text);
@@ -77,7 +84,8 @@ await describe("repl utilities", async () => {
     });
 
     await it("extracts multiple bash blocks", async () => {
-      const text = "First:\n```bash\necho one\n```\nSecond:\n```bash\necho two\n```";
+      const text =
+        "First:\n```bash\necho one\n```\nSecond:\n```bash\necho two\n```";
       const blocks = extractBashBlocks(text);
 
       assert.deepStrictEqual(blocks, ["echo one", "echo two"]);
@@ -94,7 +102,7 @@ await describe("repl utilities", async () => {
     });
 
     await it("ignores non-bash code blocks", async () => {
-      const text = "```json\n{\"key\": \"value\"}\n```\n```bash\necho hello\n```";
+      const text = '```json\n{"key": "value"}\n```\n```bash\necho hello\n```';
       const blocks = extractBashBlocks(text);
 
       assert.deepStrictEqual(blocks, ["echo hello"]);
@@ -133,7 +141,6 @@ await describe("repl utilities", async () => {
   });
 
   await describe("truncateOutput", async () => {
-
     await it("returns short output unchanged", async () => {
       const output = "Short output";
       const result = truncateOutput(output, 100);
@@ -185,7 +192,6 @@ await describe("repl utilities", async () => {
   });
 
   await describe("isPauseInput", async () => {
-
     await it("detects 'pause'", async () => {
       assert.strictEqual(isPauseInput("pause"), true);
     });

@@ -2,7 +2,6 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "fs";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
-import * as readline from "readline";
 import { chat, LLMConfig } from "./llm.js";
 import {
   listCredentials,
@@ -47,9 +46,17 @@ import {
   SupervisorContext,
   SandboxOptions,
 } from "./sandbox.js";
-import { extractBashBlocks, truncateOutput, ensureGroupDir } from "./utils.js";
+import {
+  extractBashBlocks,
+  truncateOutput,
+  ensureGroupDir,
+  getErrorMessage,
+} from "./utils.js";
 
 export { InputBuffer };
+
+// Constants for REPL operation
+const DEFAULT_CRON_CHECK_INTERVAL_MS = 60000; // 60 seconds
 
 mkdirSync(config.dataDir, { recursive: true });
 mkdirSync(join(config.dataDir, "ipc"), { recursive: true });
@@ -325,7 +332,7 @@ let schedulerCallback:
 
 export function startScheduler(
   callback: (group: string, prompt: string) => Promise<void>,
-  intervalMs = 60000,
+  intervalMs = DEFAULT_CRON_CHECK_INTERVAL_MS,
 ): void {
   schedulerCallback = callback;
   schedulerInterval = setInterval(async () => {
@@ -338,10 +345,7 @@ export function startScheduler(
         await schedulerCallback!(job.groupName, job.prompt);
         updateJobLastRun(db, job.id);
       } catch (err) {
-        console.error(
-          `[cron] Job '${job.name}' failed:`,
-          (err as Error).message,
-        );
+        console.error(`[cron] Job '${job.name}' failed:`, getErrorMessage(err));
       }
     }
   }, intervalMs);
@@ -406,7 +410,7 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
     try {
       await processMessage(group, prompt, llmConfig);
     } catch (err) {
-      console.error(`[cron] Error in group ${group}:`, (err as Error).message);
+      console.error(`[cron] Error in group ${group}:`, getErrorMessage(err));
     }
   });
 
@@ -764,7 +768,7 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
             console.log(`\n${response}\n`);
           }
         } catch (err) {
-          console.error(`\nError: ${(err as Error).message}\n`);
+          console.error(`\nError: ${getErrorMessage(err)}\n`);
         }
         continue;
       }
@@ -795,7 +799,7 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
           console.log(`\n${response}\n`);
         }
       } catch (err) {
-        console.error(`\nError: ${(err as Error).message}\n`);
+        console.error(`\nError: ${getErrorMessage(err)}\n`);
       }
     }
   }

@@ -129,18 +129,48 @@ export function toggleCronJob(
   return result.changes > 0;
 }
 
-function rowToCronJob(row: unknown): CronJob {
+interface CronJobRow {
+  id: number;
+  group_name: string;
+  name: string;
+  schedule: string;
+  prompt: string;
+  enabled: number;
+  last_run: string | null;
+  next_run: string | null;
+  created_at: string;
+}
+
+function isCronJobRow(row: unknown): row is CronJobRow {
+  if (typeof row !== "object" || row === null) return false;
   const r = row as Record<string, unknown>;
+  return (
+    typeof r.id === "number" &&
+    typeof r.group_name === "string" &&
+    typeof r.name === "string" &&
+    typeof r.schedule === "string" &&
+    typeof r.prompt === "string" &&
+    typeof r.enabled === "number" &&
+    (r.last_run === null || typeof r.last_run === "string") &&
+    (r.next_run === null || typeof r.next_run === "string") &&
+    typeof r.created_at === "string"
+  );
+}
+
+function rowToCronJob(row: unknown): CronJob {
+  if (!isCronJobRow(row)) {
+    throw new Error("Invalid cron job row from database");
+  }
   return {
-    id: r.id as number,
-    groupName: r.group_name as string,
-    name: r.name as string,
-    schedule: r.schedule as string,
-    prompt: r.prompt as string,
-    enabled: r.enabled === 1,
-    lastRun: r.last_run as string | null,
-    nextRun: r.next_run as string | null,
-    createdAt: r.created_at as string,
+    id: row.id,
+    groupName: row.group_name,
+    name: row.name,
+    schedule: row.schedule,
+    prompt: row.prompt,
+    enabled: row.enabled === 1,
+    lastRun: row.last_run,
+    nextRun: row.next_run,
+    createdAt: row.created_at,
   };
 }
 

@@ -1,11 +1,13 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
-import { envBlocklist, isBlockedEnvVar, filterEnvVars } from "../src/sandbox.js";
+import {
+  envBlocklist,
+  isBlockedEnvVar,
+  filterEnvVars,
+} from "../src/sandbox.js";
 
 await describe("sandbox environment filtering", async () => {
-
   await describe("isBlockedEnvVar", async () => {
-
     await it("blocks API_KEY suffix", async () => {
       assert.strictEqual(isBlockedEnvVar("MY_API_KEY"), true);
       assert.strictEqual(isBlockedEnvVar("OPENAI_API_KEY"), true);
@@ -77,7 +79,6 @@ await describe("sandbox environment filtering", async () => {
   });
 
   await describe("filterEnvVars", async () => {
-
     await it("returns safe variables", async () => {
       const env = {
         PATH: "/usr/bin",
@@ -165,7 +166,6 @@ await describe("sandbox environment filtering", async () => {
   });
 
   await describe("blocklist completeness", async () => {
-
     await it("has descriptions for all patterns", async () => {
       for (const entry of envBlocklist) {
         assert.ok(entry.description.length > 0);

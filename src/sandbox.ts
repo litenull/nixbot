@@ -4,6 +4,11 @@ import { join } from "path";
 import { chat, LLMConfig } from "./llm.js";
 import { getRequiredCredsForCommand } from "./credentials.js";
 import { InputBuffer } from "./input-buffer.js";
+import { getErrorMessage } from "./utils.js";
+
+// Constants for sandbox execution
+const DEFAULT_TIMEOUT_MS = 60000; // 60 seconds
+const DEFAULT_POLL_INTERVAL_MS = 500; // 0.5 seconds
 
 export interface EnvBlocklistEntry {
   pattern: RegExp;
@@ -58,7 +63,7 @@ export function runInSandbox(
   sandboxBin: string,
   group: string,
   command: string,
-  timeout = 60000,
+  timeout = DEFAULT_TIMEOUT_MS,
   options?: SandboxOptions,
 ): Promise<SandboxResult> {
   return new Promise((resolve) => {
@@ -104,7 +109,7 @@ export function runInSandbox(
     let pollTimer: ReturnType<typeof setInterval> | null = null;
 
     if (options?.inputBuffer) {
-      const pollInterval = options.pollIntervalMs || 500;
+      const pollInterval = options.pollIntervalMs || DEFAULT_POLL_INTERVAL_MS;
       pollTimer = setInterval(async () => {
         try {
           if (
@@ -129,7 +134,7 @@ export function runInSandbox(
             }
           }
         } catch (err) {
-          console.error(`[poll error] ${(err as Error).message}`);
+          console.error(`[poll error] ${getErrorMessage(err)}`);
         }
       }, pollInterval);
     }

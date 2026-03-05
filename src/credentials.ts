@@ -2,6 +2,7 @@ import * as crypto from "crypto";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import { getErrorMessage } from "./utils.js";
 
 function getNixbotDir(): string {
   const override = process.env.NIXBOT_CRED_DIR;
@@ -33,7 +34,7 @@ export function resetPaths(): void {
 const ALGORITHM = "aes-256-gcm";
 const KEY_LENGTH = 32;
 const IV_LENGTH = 16;
-const TAG_LENGTH = 16;
+const _TAG_LENGTH = 16;
 
 const ENV_VAR_PATTERN = /\$\{?([A-Z_][A-Z0-9_]*)\}?/g;
 
@@ -176,15 +177,15 @@ export function loadCredentials(): void {
         });
       } catch (err) {
         throw new Error(
-          `Failed to decrypt credential '${name}': ${(err as Error).message}`,
+          `Failed to decrypt credential '${name}': ${getErrorMessage(err)}`,
         );
       }
     }
   } catch (err) {
-    if ((err as Error).message.includes("Failed to decrypt")) {
+    if (getErrorMessage(err).includes("Failed to decrypt")) {
       throw err;
     }
-    throw new Error(`Failed to load credentials: ${(err as Error).message}`);
+    throw new Error(`Failed to load credentials: ${getErrorMessage(err)}`);
   }
 }
 

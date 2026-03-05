@@ -64,6 +64,26 @@ npm run dev
 npm run build
 ```
 
+### Run linter
+```bash
+npm run lint
+```
+
+### Fix linting issues automatically
+```bash
+npm run lint:fix
+```
+
+### Format code with Prettier
+```bash
+npm run format
+```
+
+### Check code formatting
+```bash
+npm run format:check
+```
+
 ## Contribution Rule
 
 - When adding or changing features, update the relevant documentation in the same change (for example `README.md`, `AGENTS.md`, or other docs affected by the feature).

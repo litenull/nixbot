@@ -1,5 +1,6 @@
 import { telegramPlugin } from "./telegram.js";
 import { BotPlugin, PluginContext, PluginHandle } from "./types.js";
+import { getErrorMessage } from "../utils.js";
 
 const builtInPlugins: Record<string, BotPlugin> = {
   telegram: telegramPlugin,
@@ -42,7 +43,7 @@ export async function startPlugins(
       }
     } catch (err) {
       context.log(
-        `[plugins] Failed to start '${name}': ${(err as Error).message}`,
+        `[plugins] Failed to start '${name}': ${getErrorMessage(err)}`,
       );
     }
   }

@@ -5,19 +5,22 @@ import { request as httpRequest } from "http";
 const ANTHROPIC_MESSAGES_URL = "https://api.anthropic.com/v1/messages";
 const OPENAI_BASE_URL = "https://api.openai.com";
 
+// Constants for LLM API
+const DEFAULT_MAX_TOKENS = 4096;
+
 const Message = z.object({
   role: z.enum(["system", "user", "assistant"]),
   content: z.string(),
 });
 
-const ChatRequest = z.object({
+const _ChatRequest = z.object({
   model: z.string(),
   messages: z.array(Message),
   max_tokens: z.number().optional(),
   temperature: z.number().optional(),
 });
 
-type ChatRequestType = z.infer<typeof ChatRequest>;
+type ChatRequestType = z.infer<typeof _ChatRequest>;
 
 export interface LLMConfig {
   provider: "anthropic" | "openai" | "openai-compatible";
@@ -67,7 +70,7 @@ export async function chat(
       role: m.role as "system" | "user" | "assistant",
       content: m.content,
     })),
-    max_tokens: 4096,
+    max_tokens: DEFAULT_MAX_TOKENS,
   };
 
   let endpoint = "";
@@ -84,7 +87,7 @@ export async function chat(
     };
     payload = {
       model: config.model,
-      max_tokens: 4096,
+      max_tokens: DEFAULT_MAX_TOKENS,
       messages: messages
         .filter((m) => m.role !== "system")
         .map((m) => ({

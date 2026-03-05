@@ -34,9 +34,7 @@ afterEach(() => {
 });
 
 await describe("credentials", async () => {
-
   await describe("detectRequiredCreds", async () => {
-
     await it("detects $VAR pattern", async () => {
       const vars = detectRequiredCreds("echo $MY_VAR");
       assert.deepStrictEqual(vars, ["MY_VAR"]);
@@ -48,7 +46,9 @@ await describe("credentials", async () => {
     });
 
     await it("detects multiple variables", async () => {
-      const vars = detectRequiredCreds('curl -H "Authorization: $API_KEY" -H "X-Token: ${TOKEN}" https://api.example.com');
+      const vars = detectRequiredCreds(
+        'curl -H "Authorization: $API_KEY" -H "X-Token: ${TOKEN}" https://api.example.com',
+      );
       assert.deepStrictEqual(vars.sort(), ["API_KEY", "TOKEN"].sort());
     });
 
@@ -63,13 +63,14 @@ await describe("credentials", async () => {
     });
 
     await it("handles variables in URLs", async () => {
-      const vars = detectRequiredCreds("git push https://$TOKEN@github.com/user/repo.git");
+      const vars = detectRequiredCreds(
+        "git push https://$TOKEN@github.com/user/repo.git",
+      );
       assert.deepStrictEqual(vars, ["TOKEN"]);
     });
   });
 
   await describe("key management", async () => {
-
     await it("generates key file on first load", async () => {
       const keyFile = path.join(testDir, "key");
       assert.strictEqual(fs.existsSync(keyFile), false);
@@ -120,7 +121,6 @@ await describe("credentials", async () => {
   });
 
   await describe("loadCredentials", async () => {
-
     await it("decrypts and restores saved credentials", async () => {
       loadCredentials();
       setCredential("API_TOKEN", "secret123");
@@ -136,7 +136,10 @@ await describe("credentials", async () => {
     await it("throws on unsupported credentials version", async () => {
       loadCredentials(); // creates key file
       const credsFile = path.join(testDir, "credentials.json");
-      fs.writeFileSync(credsFile, JSON.stringify({ version: 2, credentials: {} }));
+      fs.writeFileSync(
+        credsFile,
+        JSON.stringify({ version: 2, credentials: {} }),
+      );
       resetPaths();
 
       assert.throws(() => loadCredentials(), /Unsupported credentials version/);
@@ -159,7 +162,7 @@ await describe("credentials", async () => {
       loadCredentials();
 
       const creds = listCredentials();
-      const cred = creds.find(c => c.name === "SCOPED");
+      const cred = creds.find((c) => c.name === "SCOPED");
       assert.ok(cred);
       assert.strictEqual(cred.scope, "production");
       assert.ok(cred.lastUsed);
@@ -167,7 +170,6 @@ await describe("credentials", async () => {
   });
 
   await describe("credential operations", async () => {
-
     await it("stores and retrieves credential", async () => {
       loadCredentials();
       setCredential("TEST_TOKEN", "secret123");
@@ -183,7 +185,7 @@ await describe("credentials", async () => {
       loadCredentials();
       setCredential("GITHUB_TOKEN", "ghp_xxx", "repo");
       const creds = listCredentials();
-      const cred = creds.find(c => c.name === "GITHUB_TOKEN");
+      const cred = creds.find((c) => c.name === "GITHUB_TOKEN");
       assert.ok(cred);
       assert.strictEqual(cred.scope, "repo");
     });
@@ -215,12 +217,16 @@ await describe("credentials", async () => {
     await it("updates lastUsed timestamp", async () => {
       loadCredentials();
       setCredential("MY_KEY", "val");
-      const before = listCredentials().find(c => c.name === "MY_KEY")!.lastUsed!;
+      const before = listCredentials().find(
+        (c) => c.name === "MY_KEY",
+      )!.lastUsed!;
 
-      await new Promise(r => setTimeout(r, 5));
+      await new Promise((r) => setTimeout(r, 5));
       updateLastUsed("MY_KEY");
 
-      const after = listCredentials().find(c => c.name === "MY_KEY")!.lastUsed!;
+      const after = listCredentials().find(
+        (c) => c.name === "MY_KEY",
+      )!.lastUsed!;
       assert.ok(new Date(after) > new Date(before));
     });
 
@@ -243,7 +249,6 @@ await describe("credentials", async () => {
   });
 
   await describe("maskCredentials", async () => {
-
     await it("masks credential values in text", async () => {
       loadCredentials();
       setCredential("API_KEY", "supersecret");
@@ -281,29 +286,36 @@ await describe("credentials", async () => {
   });
 
   await describe("getRequiredCredsForCommand", async () => {
-
     await it("returns env vars for detected credentials", async () => {
       loadCredentials();
       setCredential("SECRET_TOKEN", "tok123");
-      const env = getRequiredCredsForCommand("curl -H \"X-Token: $SECRET_TOKEN\" https://api.example.com");
+      const env = getRequiredCredsForCommand(
+        'curl -H "X-Token: $SECRET_TOKEN" https://api.example.com',
+      );
       assert.strictEqual(env["SECRET_TOKEN"], "tok123");
     });
 
     await it("updates lastUsed timestamp", async () => {
       loadCredentials();
       setCredential("API_KEY", "key123");
-      const before = listCredentials().find(c => c.name === "API_KEY")!.lastUsed!;
+      const before = listCredentials().find(
+        (c) => c.name === "API_KEY",
+      )!.lastUsed!;
 
-      await new Promise(r => setTimeout(r, 5));
+      await new Promise((r) => setTimeout(r, 5));
       getRequiredCredsForCommand("curl $API_KEY");
 
-      const after = listCredentials().find(c => c.name === "API_KEY")!.lastUsed!;
+      const after = listCredentials().find(
+        (c) => c.name === "API_KEY",
+      )!.lastUsed!;
       assert.ok(new Date(after) > new Date(before));
     });
 
     await it("only includes credentials that exist", async () => {
       loadCredentials();
-      const env = getRequiredCredsForCommand("curl $MISSING_VAR https://api.example.com");
+      const env = getRequiredCredsForCommand(
+        "curl $MISSING_VAR https://api.example.com",
+      );
       assert.strictEqual(env["MISSING_VAR"], undefined);
     });
 

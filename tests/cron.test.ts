@@ -37,12 +37,20 @@ await describe("cron", async () => {
 
   await describe("initCronTable", async () => {
     it("creates cron_jobs table", () => {
-      const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='cron_jobs'").all();
+      const tables = db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='cron_jobs'",
+        )
+        .all();
       assert.strictEqual(tables.length, 1);
     });
 
     it("creates indexes", () => {
-      const indexes = db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='cron_jobs'").all();
+      const indexes = db
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='cron_jobs'",
+        )
+        .all();
       assert.ok(indexes.length >= 2);
     });
   });
@@ -93,7 +101,12 @@ await describe("cron", async () => {
 
   await describe("removeCronJob", async () => {
     it("removes an existing job", () => {
-      addCronJob(db, { groupName: "main", name: "to-remove", schedule: "* * * * *", prompt: "test" });
+      addCronJob(db, {
+        groupName: "main",
+        name: "to-remove",
+        schedule: "* * * * *",
+        prompt: "test",
+      });
       assert.strictEqual(removeCronJob(db, "to-remove"), true);
       assert.strictEqual(getCronJobByName(db, "to-remove"), undefined);
     });
@@ -105,7 +118,12 @@ await describe("cron", async () => {
 
   await describe("getCronJob", async () => {
     it("returns job by id", () => {
-      const added = addCronJob(db, { groupName: "main", name: "by-id", schedule: "* * * * *", prompt: "test" });
+      const added = addCronJob(db, {
+        groupName: "main",
+        name: "by-id",
+        schedule: "* * * * *",
+        prompt: "test",
+      });
       const found = getCronJob(db, added.id);
       assert.strictEqual(found?.name, "by-id");
     });
@@ -117,7 +135,12 @@ await describe("cron", async () => {
 
   await describe("getCronJobByName", async () => {
     it("returns job by name", () => {
-      addCronJob(db, { groupName: "main", name: "by-name", schedule: "* * * * *", prompt: "test" });
+      addCronJob(db, {
+        groupName: "main",
+        name: "by-name",
+        schedule: "* * * * *",
+        prompt: "test",
+      });
       const found = getCronJobByName(db, "by-name");
       assert.strictEqual(found?.name, "by-name");
     });
@@ -129,15 +152,35 @@ await describe("cron", async () => {
 
   await describe("listCronJobs", async () => {
     it("lists all jobs", () => {
-      addCronJob(db, { groupName: "main", name: "job1", schedule: "* * * * *", prompt: "test" });
-      addCronJob(db, { groupName: "work", name: "job2", schedule: "* * * * *", prompt: "test" });
+      addCronJob(db, {
+        groupName: "main",
+        name: "job1",
+        schedule: "* * * * *",
+        prompt: "test",
+      });
+      addCronJob(db, {
+        groupName: "work",
+        name: "job2",
+        schedule: "* * * * *",
+        prompt: "test",
+      });
       const jobs = listCronJobs(db);
       assert.strictEqual(jobs.length, 2);
     });
 
     it("filters by group", () => {
-      addCronJob(db, { groupName: "main", name: "job1", schedule: "* * * * *", prompt: "test" });
-      addCronJob(db, { groupName: "work", name: "job2", schedule: "* * * * *", prompt: "test" });
+      addCronJob(db, {
+        groupName: "main",
+        name: "job1",
+        schedule: "* * * * *",
+        prompt: "test",
+      });
+      addCronJob(db, {
+        groupName: "work",
+        name: "job2",
+        schedule: "* * * * *",
+        prompt: "test",
+      });
       const jobs = listCronJobs(db, "main");
       assert.strictEqual(jobs.length, 1);
       assert.strictEqual(jobs[0].groupName, "main");
@@ -153,10 +196,12 @@ await describe("cron", async () => {
       const pastDate = new Date();
       pastDate.setMinutes(pastDate.getMinutes() - 5);
 
-      db.prepare(`
+      db.prepare(
+        `
         INSERT INTO cron_jobs (group_name, name, schedule, prompt, enabled, next_run)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).run("main", "due-job", "* * * * *", "test", 1, pastDate.toISOString());
+      `,
+      ).run("main", "due-job", "* * * * *", "test", 1, pastDate.toISOString());
 
       const due = getDueJobs(db);
       assert.strictEqual(due.length, 1);
@@ -167,10 +212,19 @@ await describe("cron", async () => {
       const pastDate = new Date();
       pastDate.setMinutes(pastDate.getMinutes() - 5);
 
-      db.prepare(`
+      db.prepare(
+        `
         INSERT INTO cron_jobs (group_name, name, schedule, prompt, enabled, next_run)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).run("main", "disabled-due", "* * * * *", "test", 0, pastDate.toISOString());
+      `,
+      ).run(
+        "main",
+        "disabled-due",
+        "* * * * *",
+        "test",
+        0,
+        pastDate.toISOString(),
+      );
 
       assert.strictEqual(getDueJobs(db).length, 0);
     });
@@ -179,10 +233,19 @@ await describe("cron", async () => {
       const futureDate = new Date();
       futureDate.setHours(futureDate.getHours() + 1);
 
-      db.prepare(`
+      db.prepare(
+        `
         INSERT INTO cron_jobs (group_name, name, schedule, prompt, enabled, next_run)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).run("main", "future-job", "* * * * *", "test", 1, futureDate.toISOString());
+      `,
+      ).run(
+        "main",
+        "future-job",
+        "* * * * *",
+        "test",
+        1,
+        futureDate.toISOString(),
+      );
 
       assert.strictEqual(getDueJobs(db).length, 0);
     });
@@ -190,7 +253,12 @@ await describe("cron", async () => {
 
   await describe("updateJobLastRun", async () => {
     it("updates last_run and calculates new next_run", () => {
-      const job = addCronJob(db, { groupName: "main", name: "update-test", schedule: "0 * * * *", prompt: "test" });
+      const job = addCronJob(db, {
+        groupName: "main",
+        name: "update-test",
+        schedule: "0 * * * *",
+        prompt: "test",
+      });
       updateJobLastRun(db, job.id);
 
       const updated = getCronJob(db, job.id);
@@ -201,13 +269,24 @@ await describe("cron", async () => {
 
   await describe("toggleCronJob", async () => {
     it("enables a disabled job", () => {
-      addCronJob(db, { groupName: "main", name: "toggle-test", schedule: "* * * * *", prompt: "test", enabled: false });
+      addCronJob(db, {
+        groupName: "main",
+        name: "toggle-test",
+        schedule: "* * * * *",
+        prompt: "test",
+        enabled: false,
+      });
       assert.strictEqual(toggleCronJob(db, "toggle-test", true), true);
       assert.strictEqual(getCronJobByName(db, "toggle-test")?.enabled, true);
     });
 
     it("disables an enabled job", () => {
-      addCronJob(db, { groupName: "main", name: "toggle-test2", schedule: "* * * * *", prompt: "test" });
+      addCronJob(db, {
+        groupName: "main",
+        name: "toggle-test2",
+        schedule: "* * * * *",
+        prompt: "test",
+      });
       assert.strictEqual(toggleCronJob(db, "toggle-test2", false), true);
       assert.strictEqual(getCronJobByName(db, "toggle-test2")?.enabled, false);
     });

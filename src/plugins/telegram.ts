@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { BotPlugin, PluginContext, PluginHandle } from "./types.js";
+import { getErrorMessage } from "../utils.js";
 
 interface TelegramUpdate {
   update_id: number;
@@ -28,6 +29,9 @@ const telegramEnvSchema = z.object({
   pollTimeoutSeconds: z.coerce.number().int().min(1).max(60).default(20),
 });
 
+// Constants for Telegram API
+const TELEGRAM_MAX_MESSAGE_LENGTH = 4000; // Telegram's max message length
+
 function telegramApiUrl(token: string, method: string): string {
   return `https://api.telegram.org/bot${token}/${method}`;
 }
@@ -54,7 +58,10 @@ export function parseGroupCommand(text: string): string | null {
   return match ? match[1] : null;
 }
 
-export function splitTelegramMessage(text: string, maxLen = 4000): string[] {
+export function splitTelegramMessage(
+  text: string,
+  maxLen = TELEGRAM_MAX_MESSAGE_LENGTH,
+): string[] {
   if (text.length <= maxLen) {
     return [text];
   }
@@ -227,7 +234,7 @@ export const telegramPlugin: BotPlugin = {
           if (stopped) {
             break;
           }
-          context.log(`[plugin:telegram] Error: ${(err as Error).message}`);
+          context.log(`[plugin:telegram] Error: ${getErrorMessage(err)}`);
           await sleep(3000);
         }
       }

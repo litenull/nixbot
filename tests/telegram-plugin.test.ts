@@ -1,6 +1,10 @@
 import { strict as assert } from "node:assert";
 import { describe, it } from "node:test";
-import { parseAllowedChatIds, parseGroupCommand, splitTelegramMessage } from "../src/plugins/telegram.js";
+import {
+  parseAllowedChatIds,
+  parseGroupCommand,
+  splitTelegramMessage,
+} from "../src/plugins/telegram.js";
 
 await describe("telegram plugin helpers", async () => {
   await describe("parseAllowedChatIds", async () => {
@@ -20,7 +24,10 @@ await describe("telegram plugin helpers", async () => {
     await it("ignores invalid ids", async () => {
       const ids = parseAllowedChatIds("1,abc,2.5,3");
       assert.ok(ids);
-      assert.deepEqual([...ids!].sort((a, b) => a - b), [1, 3]);
+      assert.deepEqual(
+        [...ids!].sort((a, b) => a - b),
+        [1, 3],
+      );
     });
   });
 

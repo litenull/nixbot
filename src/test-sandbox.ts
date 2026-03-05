@@ -1,13 +1,16 @@
 import { spawn } from "child_process";
 import { resolve } from "path";
 
+// Constants for sandbox testing
+const TEST_TIMEOUT_MS = 10000; // 10 seconds
+
 const sandboxBin = process.env.NIXBOT_SANDBOX_BIN
   ? resolve(process.env.NIXBOT_SANDBOX_BIN)
   : resolve("./result/bin/run-in-sandbox");
 
 function runInSandbox(
   command: string,
-  timeout = 10000,
+  timeout = TEST_TIMEOUT_MS,
 ): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
     console.log(

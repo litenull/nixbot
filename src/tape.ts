@@ -20,6 +20,76 @@ export interface TapeEntry {
 
 const TAPE_RETENTION_DAYS = 30;
 
+interface TapeRow {
+  id: number;
+  group_name: string;
+  action_type: string;
+  content: string;
+  metadata: string | null;
+  created_at: string;
+  expires_at: string;
+}
+
+function isTapeRow(row: unknown): row is TapeRow {
+  if (typeof row !== "object" || row === null) return false;
+  const r = row as Record<string, unknown>;
+  return (
+    typeof r.id === "number" &&
+    typeof r.group_name === "string" &&
+    typeof r.action_type === "string" &&
+    typeof r.content === "string" &&
+    (r.metadata === null || typeof r.metadata === "string") &&
+    typeof r.created_at === "string" &&
+    typeof r.expires_at === "string"
+  );
+}
+
+const validActionTypes: TapeEntry["actionType"][] = [
+  "command",
+  "output",
+  "feedback",
+  "llm_request",
+  "llm_response",
+  "pause",
+  "cancel",
+  "resume",
+];
+
+function isValidActionType(type: string): type is TapeEntry["actionType"] {
+  return validActionTypes.includes(type as TapeEntry["actionType"]);
+}
+
+interface CountRow {
+  count: number;
+}
+
+function isCountRow(row: unknown): row is CountRow {
+  if (typeof row !== "object" || row === null) return false;
+  const r = row as Record<string, unknown>;
+  return typeof r.count === "number";
+}
+
+interface TypeCountRow {
+  action_type: string;
+  count: number;
+}
+
+function isTypeCountRow(row: unknown): row is TypeCountRow {
+  if (typeof row !== "object" || row === null) return false;
+  const r = row as Record<string, unknown>;
+  return typeof r.action_type === "string" && typeof r.count === "number";
+}
+
+interface OldestRow {
+  oldest: string | null;
+}
+
+function isOldestRow(row: unknown): row is OldestRow {
+  if (typeof row !== "object" || row === null) return false;
+  const r = row as Record<string, unknown>;
+  return r.oldest === null || typeof r.oldest === "string";
+}
+
 export function initTapeTable(db: Database.Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS tape_log (
@@ -122,20 +192,14 @@ export function queryTapeLog(
     params.push(options.limit);
   }
 
-  const rows = db.prepare(sql).all(...params) as Array<{
-    id: number;
-    group_name: string;
-    action_type: string;
-    content: string;
-    metadata: string | null;
-    created_at: string;
-    expires_at: string;
-  }>;
+  const rows = db.prepare(sql).all(...params);
 
-  return rows.map((row) => ({
+  return rows.filter(isTapeRow).map((row) => ({
     id: row.id,
     groupName: row.group_name,
-    actionType: row.action_type as TapeEntry["actionType"],
+    actionType: isValidActionType(row.action_type)
+      ? row.action_type
+      : "command",
     content: row.content,
     metadata: row.metadata,
     createdAt: new Date(row.created_at),
@@ -190,11 +254,10 @@ export function getTapeStats(db: Database.Database): {
   oldestEntry: Date | null;
   entriesExpiringSoon: number;
 } {
-  const total = db.prepare("SELECT COUNT(*) as count FROM tape_log").get() as {
-    count: number;
-  };
+  const totalRow = db.prepare("SELECT COUNT(*) as count FROM tape_log").get();
+  const total = isCountRow(totalRow) ? totalRow : { count: 0 };
 
-  const byType = db
+  const byTypeRows = db
     .prepare(
       `
     SELECT action_type, COUNT(*) as count 
@@ -202,24 +265,27 @@ export function getTapeStats(db: Database.Database): {
     GROUP BY action_type
   `,
     )
-    .all() as Array<{ action_type: string; count: number }>;
+    .all();
+  const byType = byTypeRows.filter(isTypeCountRow);
 
-  const oldest = db
+  const oldestRow = db
     .prepare(
       `
     SELECT MIN(created_at) as oldest FROM tape_log
   `,
     )
-    .get() as { oldest: string | null };
+    .get();
+  const oldest = isOldestRow(oldestRow) ? oldestRow : { oldest: null };
 
-  const expiring = db
+  const expiringRow = db
     .prepare(
       `
     SELECT COUNT(*) as count FROM tape_log 
     WHERE expires_at < datetime('now', '+3 days')
   `,
     )
-    .get() as { count: number };
+    .get();
+  const expiring = isCountRow(expiringRow) ? expiringRow : { count: 0 };
 
   const entriesByType: Record<string, number> = {};
   for (const row of byType) {
