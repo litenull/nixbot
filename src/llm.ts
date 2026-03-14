@@ -7,6 +7,9 @@ const OPENAI_BASE_URL = "https://api.openai.com";
 
 // Constants for LLM API
 const DEFAULT_MAX_TOKENS = 4096;
+const DEFAULT_TIMEOUT_MS = 60000; // 60 seconds
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000; // Initial retry delay
 
 const Message = z.object({
   role: z.enum(["system", "user", "assistant"]),
@@ -33,12 +36,19 @@ function makeRequest(
   url: string,
   headers: Record<string, string>,
   body: string,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     const isHttps = url.startsWith("https");
     const req = isHttps
       ? request(url, { method: "POST", headers })
       : httpRequest(url, { method: "POST", headers });
+
+    // Set timeout
+    req.setTimeout(timeoutMs, () => {
+      req.destroy();
+      reject(new Error(`Request timeout after ${timeoutMs}ms`));
+    });
 
     req.on("response", (res) => {
       let data = "";
@@ -58,6 +68,66 @@ function makeRequest(
     req.write(body);
     req.end();
   });
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableError(error: Error): boolean {
+  // Retry on network errors and timeout errors
+  const message = error.message.toLowerCase();
+  return (
+    message.includes("timeout") ||
+    message.includes("econnreset") ||
+    message.includes("enotfound") ||
+    message.includes("econnrefused") ||
+    message.includes("socket hang up")
+  );
+}
+
+function isRetryableStatus(statusCode: number): boolean {
+  // Retry on 5xx server errors and rate limiting (429)
+  return statusCode >= 500 || statusCode === 429;
+}
+
+async function makeRequestWithRetry(
+  url: string,
+  headers: Record<string, string>,
+  body: string,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  retries = MAX_RETRIES,
+): Promise<string> {
+  let lastError: Error | undefined;
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await makeRequest(url, headers, body, timeoutMs);
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Check if we should retry
+      const shouldRetry =
+        isRetryableError(lastError) ||
+        (lastError.message.includes("HTTP") &&
+          isRetryableStatus(
+            parseInt(lastError.message.match(/HTTP (\d+)/)?.[1] || "0", 10),
+          ));
+
+      if (!shouldRetry || attempt === retries) {
+        throw lastError;
+      }
+
+      // Exponential backoff: 1s, 2s, 4s
+      const backoffMs = RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+      console.log(
+        `[llm] Request failed (attempt ${attempt}/${retries}), retrying in ${backoffMs}ms: ${lastError.message}`,
+      );
+      await delay(backoffMs);
+    }
+  }
+
+  throw lastError || new Error("Request failed after retries");
 }
 
 export async function chat(
@@ -110,7 +180,11 @@ export async function chat(
     payload = chatReq;
   }
 
-  const res = await makeRequest(endpoint, headers, JSON.stringify(payload));
+  const res = await makeRequestWithRetry(
+    endpoint,
+    headers,
+    JSON.stringify(payload),
+  );
 
   const data = JSON.parse(res);
   if (config.provider === "anthropic") {

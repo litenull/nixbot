@@ -6,6 +6,7 @@ export const config = z
     groupsDir: z.string().default("./groups"),
     dataDir: z.string().default("./data"),
     sandboxBin: z.string().default(resolve("./result/bin/run-in-sandbox")),
+    maxToolRounds: z.coerce.number().int().min(1).max(20).default(10),
   })
   .parse({
     groupsDir: process.env.NIXBOT_GROUPS_DIR,
@@ -13,4 +14,5 @@ export const config = z
     sandboxBin: process.env.NIXBOT_SANDBOX_BIN
       ? resolve(process.env.NIXBOT_SANDBOX_BIN)
       : undefined,
+    maxToolRounds: process.env.NIXBOT_MAX_TOOL_ROUNDS,
   });
