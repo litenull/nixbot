@@ -6,12 +6,8 @@ import type { LLMConfig } from "./llm.js";
 import { config } from "./config.js";
 import { InputBuffer } from "./input-buffer.js";
 import { setCredential } from "./credentials.js";
-import {
-  initGroupsTable,
-  getGroup,
-  registerGroup,
-  ensureGroupDir,
-} from "./groups.js";
+import { initGroupsTable, getGroup, registerGroup } from "./groups.js";
+import { ensureGroupDir } from "./utils.js";
 import { initCronTable } from "./cron.js";
 import {
   initTapeTable,
@@ -19,12 +15,20 @@ import {
   logTapeAction,
 } from "./tape.js";
 import { getErrorMessage } from "./utils.js";
-import { processMessage } from "./orchestrator/message-processor.js";
+import { processMessage as _processMessageImpl } from "./orchestrator/message-processor.js";
 import { startScheduler, stopScheduler } from "./scheduler/cron-scheduler.js";
 import { loadCommands, findCommand } from "./commands/index.js";
 import type { CommandContext, ReplState } from "./types/repl.js";
 
 export { InputBuffer };
+
+export async function processMessage(
+  group: string,
+  message: string,
+  llmConfig: LLMConfig,
+): Promise<string | import("./types/repl.js").PauseResult> {
+  return _processMessageImpl(db, group, message, llmConfig);
+}
 
 // Initialize directories and database
 mkdirSync(config.dataDir, { recursive: true });
@@ -69,23 +73,26 @@ export async function repl(llmConfig: LLMConfig): Promise<void> {
 
   cleanExpiredTapeEntries(db);
 
-  startScheduler(
-    db,
-    async (group, prompt) => {
-      try {
-        await processMessage(db, group, prompt, llmConfig);
-      } catch (err) {
-        console.error(`[cron] Error in group ${group}:`, getErrorMessage(err));
-      }
-    },
-  );
+  startScheduler(db, async (group, prompt) => {
+    try {
+      await _processMessageImpl(db, group, prompt, llmConfig);
+    } catch (err) {
+      console.error(`[cron] Error in group ${group}:`, getErrorMessage(err));
+    }
+  });
 
   while (true) {
     const input = await question(`[${state.currentGroup}]> `);
 
     // Handle paused state first
     if (state.pausedState) {
-      const result = await handlePausedState(input, state, llmConfig, inputBuffer, db);
+      const result = await handlePausedState(
+        input,
+        state,
+        llmConfig,
+        inputBuffer,
+        db,
+      );
       if (result === "continue") continue;
       if (result === "break") break;
     }
@@ -155,7 +162,7 @@ async function handlePausedState(
     logTapeAction(db, state.currentGroup, "resume", "User resumed execution");
 
     try {
-      const response = await processMessage(
+      const response = await _processMessageImpl(
         db,
         state.currentGroup,
         "Continue from where you left off.",
@@ -225,14 +232,12 @@ async function handleAtMessage(
   const msg = input.slice(spaceIdx + 1);
 
   if (!getGroup(db, group)) {
-    console.log(
-      `Unknown group: ${group}. Create it first with /add ${group}`,
-    );
+    console.log(`Unknown group: ${group}. Create it first with /add ${group}`);
     return;
   }
 
   state.currentGroup = group;
-  const response = await processMessage(db, group, msg, llmConfig, {
+  const response = await _processMessageImpl(db, group, msg, llmConfig, {
     inputBuffer,
     onFeedback: (fb) =>
       console.log(`\x1b[36m[Feedback: ${fb.slice(0, 30)}...]\x1b[0m`),
@@ -248,7 +253,7 @@ async function handleRegularMessage(
   db: Database.Database,
 ): Promise<void> {
   try {
-    const response = await processMessage(
+    const response = await _processMessageImpl(
       db,
       state.currentGroup,
       input,

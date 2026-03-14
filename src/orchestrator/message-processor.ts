@@ -19,7 +19,11 @@ import {
   type SupervisorContext,
   type SandboxOptions,
 } from "../sandbox.js";
-import { extractBashBlocks, truncateOutput } from "../utils.js";
+import {
+  extractBashBlocks,
+  truncateOutput,
+  getErrorMessage,
+} from "../utils.js";
 import { detectRequiredCreds, maskCredentials } from "../credentials.js";
 import type { ProcessMessageOptions, PauseResult } from "../types/repl.js";
 
@@ -48,104 +52,153 @@ export async function processMessage(
 
   const systemPrompt = buildSystemPrompt(group, context);
 
-  const messages: Array<{ role: string; content: string }> = [
-    { role: "system", content: systemPrompt },
+  const conversationMessages: Array<{ role: string; content: string }> = [
     ...history.slice(-10),
     { role: "user", content: message },
   ];
 
-  let response: string;
-  try {
-    response = await chat(llmConfig, messages);
-    logTapeAction(db, group, "llm_response", response.slice(0, 1000));
-  } catch (err) {
-    const error = err as Error;
-    return `LLM error: ${error.message}`;
+  const sandboxBin = options?.sandboxBin ?? config.sandboxBin;
+  const allDetectedVars: string[] = [];
+  let accumulatedResponse = "";
+  const maxRounds = options?.maxToolRounds ?? config.maxToolRounds;
+
+  for (let round = 0; round < maxRounds; round++) {
+    const messages: Array<{ role: string; content: string }> = [
+      { role: "system", content: systemPrompt },
+      ...conversationMessages,
+    ];
+
+    let response: string;
+    try {
+      response = await chat(llmConfig, messages);
+      logTapeAction(db, group, "llm_response", response.slice(0, 1000));
+    } catch (err) {
+      const errorMsg = getErrorMessage(err);
+      if (accumulatedResponse) {
+        accumulatedResponse += `\n\n[LLM error on round ${round + 1}: ${errorMsg}]`;
+        break;
+      }
+      return `LLM error: ${errorMsg}`;
+    }
+
+    const bashBlocks = extractBashBlocks(response);
+
+    if (bashBlocks.length === 0) {
+      if (accumulatedResponse) {
+        accumulatedResponse += "\n\n" + response;
+      } else {
+        accumulatedResponse = response;
+      }
+      break;
+    }
+
+    if (accumulatedResponse) {
+      accumulatedResponse += "\n\n" + response;
+    } else {
+      accumulatedResponse = response;
+    }
+
+    conversationMessages.push({ role: "assistant", content: response });
+
+    let roundOutput = "";
+
+    for (const cmd of bashBlocks) {
+      allDetectedVars.push(...detectRequiredCreds(cmd));
+
+      console.log(
+        `[${group}] Round ${round + 1}: ${cmd.split("\n")[0].slice(0, 50)}...`,
+      );
+      logTapeAction(db, group, "command", cmd);
+
+      if (options?.inputBuffer) {
+        options.inputBuffer.enable();
+      }
+
+      const supervisorContext: SupervisorContext = {
+        originalTask: message,
+        llmConfig,
+        group,
+      };
+
+      const sandboxOptions: SandboxOptions = {
+        inputBuffer: options?.inputBuffer,
+        onFeedback: async (feedback, context) => {
+          logTapeAction(db, group, "feedback", feedback);
+          console.log(
+            `\x1b[36m↳ Processing: ${feedback.slice(0, 40)}...\x1b[0m`,
+          );
+          const supervisorResponse = await handleLiveFeedback(
+            feedback,
+            context,
+            supervisorContext,
+          );
+          console.log(`\x1b[34m💬 ${supervisorResponse}\x1b[0m`);
+        },
+      };
+
+      const result = await runInSandbox(
+        sandboxBin,
+        group,
+        cmd,
+        60000,
+        sandboxOptions,
+      );
+
+      if (options?.inputBuffer) {
+        options.inputBuffer.disable();
+      }
+
+      if (options?.inputBuffer?.isPauseRequested()) {
+        options.inputBuffer.consumePause();
+        logTapeAction(db, group, "pause", "User requested pause");
+        console.log(
+          "\x1b[35m⏸️  Paused. Type 'resume' to continue or give new instructions.\x1b[0m",
+        );
+
+        const partialOutput = result.interrupted
+          ? result.stdout.trim() ||
+            result.stderr.trim() ||
+            "(command interrupted)"
+          : result.stdout.trim() || result.stderr.trim() || "(no output)";
+
+        accumulatedResponse += `\n\n\`\`\`output\n${truncateOutput(partialOutput)}\n\`\`\``;
+
+        return {
+          type: "paused",
+          partialResponse: accumulatedResponse,
+        };
+      }
+
+      if (options?.inputBuffer?.isCancelRequested()) {
+        options.inputBuffer.consumeCancel();
+        logTapeAction(db, group, "cancel", "User cancelled execution");
+        accumulatedResponse += "\n\n[Execution cancelled by user]";
+        const maskedResponse = maskCredentials(
+          accumulatedResponse,
+          allDetectedVars,
+        );
+        addMessage(db, group, "assistant", maskedResponse);
+        return maskedResponse;
+      }
+
+      const output =
+        result.stdout.trim() || result.stderr.trim() || "(no output)";
+      const truncated = truncateOutput(output);
+      accumulatedResponse += `\n\n\`\`\`output\n${truncated}\n\`\`\``;
+      logTapeAction(db, group, "output", truncated);
+
+      roundOutput += `Command: ${cmd.split("\n")[0].slice(0, 60)}\nOutput:\n${truncated}\n\n`;
+    }
+
+    conversationMessages.push({
+      role: "user",
+      content: `[Tool results for round ${round + 1}]\n${roundOutput}`,
+    });
   }
 
-  const bashBlocks = extractBashBlocks(response);
-  const allDetectedVars: string[] = [];
-  let accumulatedResponse = response;
-
-  for (const cmd of bashBlocks) {
-    allDetectedVars.push(...detectRequiredCreds(cmd));
-
-    console.log(`[${group}] Running: ${cmd.split("\n")[0].slice(0, 50)}...`);
-    logTapeAction(db, group, "command", cmd);
-
-    if (options?.inputBuffer) {
-      options.inputBuffer.enable();
-    }
-
-    const supervisorContext: SupervisorContext = {
-      originalTask: message,
-      llmConfig,
-      group,
-    };
-
-    const sandboxOptions: SandboxOptions = {
-      inputBuffer: options?.inputBuffer,
-      onFeedback: async (feedback, context) => {
-        logTapeAction(db, group, "feedback", feedback);
-        console.log(`\x1b[36m↳ Processing: ${feedback.slice(0, 40)}...\x1b[0m`);
-        const supervisorResponse = await handleLiveFeedback(
-          feedback,
-          context,
-          supervisorContext,
-        );
-        console.log(`\x1b[34m💬 ${supervisorResponse}\x1b[0m`);
-      },
-    };
-
-    const result = await runInSandbox(
-      config.sandboxBin,
-      group,
-      cmd,
-      60000,
-      sandboxOptions,
-    );
-
-    if (options?.inputBuffer) {
-      options.inputBuffer.disable();
-    }
-
-    if (options?.inputBuffer?.isPauseRequested()) {
-      options.inputBuffer.consumePause();
-      logTapeAction(db, group, "pause", "User requested pause");
-      console.log(
-        "\x1b[35m⏸️  Paused. Type 'resume' to continue or give new instructions.\x1b[0m",
-      );
-
-      const partialOutput = result.interrupted
-        ? result.stdout.trim() ||
-          result.stderr.trim() ||
-          "(command interrupted)"
-        : result.stdout.trim() || result.stderr.trim() || "(no output)";
-      accumulatedResponse += `\n\n\`\`\`output\n${truncateOutput(partialOutput)}\n\`\`\``;
-
-      return {
-        type: "paused",
-        partialResponse: accumulatedResponse,
-      };
-    }
-
-    if (options?.inputBuffer?.isCancelRequested()) {
-      options.inputBuffer.consumeCancel();
-      logTapeAction(db, group, "cancel", "User cancelled execution");
-      accumulatedResponse += "\n\n[Execution cancelled by user]";
-      const maskedResponse = maskCredentials(
-        accumulatedResponse,
-        allDetectedVars,
-      );
-      addMessage(db, group, "assistant", maskedResponse);
-      return maskedResponse;
-    }
-
-    const output =
-      result.stdout.trim() || result.stderr.trim() || "(no output)";
-    const truncated = truncateOutput(output);
-    accumulatedResponse += `\n\n\`\`\`output\n${truncated}\n\`\`\``;
-    logTapeAction(db, group, "output", truncated);
+  if (accumulatedResponse.includes("Maximum tool rounds reached")) {
+    accumulatedResponse +=
+      "\n\n[Warning: Reached maximum tool execution rounds]";
   }
 
   accumulatedResponse = processCronCommands(db, group, accumulatedResponse);
@@ -168,6 +221,15 @@ CAPABILITIES:
 - You can schedule recurring tasks using /cron commands
 - You can query past activity with /tape commands
 
+MULTI-TURN EXECUTION:
+- You can run multiple rounds of commands
+- After executing your commands, you'll receive the output and can decide what to do next
+- If a command fails, you can inspect the error, fix it, and try again
+- If you need to read a file to decide your next step, run a command to read it
+- When your task is complete, respond WITHOUT any \`\`\`bash blocks to stop execution
+- Break complex tasks into steps: observe → decide → act → observe again
+- You have up to ${config.maxToolRounds} rounds of tool execution - use them wisely
+
 NIX SANDBOX NOTES:
 - DO NOT use shebangs (#!/bin/bash, #!/usr/bin/env) - they don't work
 - Instead, run scripts directly: bash script.sh or bash -c 'commands'
@@ -177,7 +239,8 @@ RULES:
 - Be concise and direct
 - When asked to do something, do it (run commands as needed)
 - Report results clearly
-- If a command fails, explain what went wrong
+- If a command fails, explain what went wrong and try to fix it
+- Always respond WITHOUT bash blocks when your task is done
 
 MID-TASK FEEDBACK:
 - The user may provide feedback while you're executing commands

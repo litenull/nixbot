@@ -7,6 +7,8 @@ export interface ProcessMessageOptions {
   onFeedback?: (feedback: string) => void;
   isPaused?: () => boolean;
   onResume?: () => Promise<string | null>;
+  sandboxBin?: string;
+  maxToolRounds?: number;
 }
 
 export interface PauseResult {

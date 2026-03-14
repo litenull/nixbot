@@ -5,6 +5,7 @@ This file documents how to work with the Nixbot codebase.
 ## Overview
 
 Nixbot is a NanoClaw-inspired agent isolation system using:
+
 - **Nix** for reproducible sandbox environments
 - **nix-bwrapper** for application sandboxing (with custom headless variant)
 - **TypeScript** for orchestration logic
@@ -14,72 +15,95 @@ Nixbot is a NanoClaw-inspired agent isolation system using:
 
 ```
 User Input → TypeScript REPL → LLM API → Parse Response
-                                    ↓
-                              bash blocks detected
-                                    ↓
-                        detect $VAR references in command
-                                    ↓
-                        inject only required credentials
-                                    ↓
-                              spawn bwrap sandbox
-                                    ↓
-                              return output → mask credentials → store in SQLite
+                                     ↓
+                               bash blocks detected
+                                     ↓
+                         detect $VAR references in command
+                                     ↓
+                         inject only required credentials
+                                     ↓
+                               spawn bwrap sandbox
+                                     ↓
+                     append output to conversation → call LLM again
+                                     ↓
+                          (repeat until no more bash blocks
+                           or max rounds reached)
+                                     ↓
+                          mask credentials → store in SQLite
 ```
 
 ### Key Files
 
-| File | Purpose |
-|------|---------|
-| `flake.nix` | Nix configuration (sandbox + dev shell) |
-| `src/cli.ts` | Entry point, loads .env, initializes credentials |
-| `src/repl.ts` | REPL loop, message processing, sandbox spawning, mid-task input |
-| `src/llm.ts` | LLM API integration (Anthropic/OpenAI/z.ai) |
-| `src/config.ts` | Configuration schema/validation |
-| `src/credentials.ts` | Encrypted credential management |
-| `tests/credentials.test.ts` | Unit tests for credential system |
-| `src/cron.ts` | Cron job scheduling and management |
-| `src/tape.ts` | Tape logging for all actions and outputs |
-| `groups/*/CLAUDE.md` | Per-group context files |
-| `data/nixbot.db` | SQLite database (created at runtime) |
+| File                                    | Purpose                                                         |
+| --------------------------------------- | --------------------------------------------------------------- |
+| `flake.nix`                             | Nix configuration (sandbox + dev shell)                         |
+| `src/cli.ts`                            | Entry point, loads .env, initializes credentials                |
+| `src/repl.ts`                           | REPL loop, message processing, sandbox spawning, mid-task input |
+| `src/llm.ts`                            | LLM API integration (Anthropic/OpenAI/z.ai)                     |
+| `src/config.ts`                         | Configuration schema/validation                                 |
+| `src/credentials.ts`                    | Encrypted credential management                                 |
+| `tests/credentials.test.ts`             | Unit tests for credential system                                |
+| `src/cron.ts`                           | Cron job scheduling and management                              |
+| `src/tape.ts`                           | Tape logging for all actions and outputs                        |
+| `src/sandbox.ts`                        | Sandbox execution, env filtering, live feedback                 |
+| `src/groups.ts`                         | Group and message database operations                           |
+| `src/utils.ts`                          | Shared utilities (bash block extraction, truncation)            |
+| `src/input-buffer.ts`                   | Mid-task input buffer with pause/cancel                         |
+| `src/orchestrator/message-processor.ts` | Core multi-turn message processing loop                         |
+| `src/scheduler/cron-scheduler.ts`       | Interval-based cron job scheduler                               |
+| `src/plugins/manager.ts`                | Plugin loading and lifecycle                                    |
+| `src/plugins/telegram.ts`               | Telegram bot plugin                                             |
+| `src/commands/`                         | Slash command handlers                                          |
+| `src/types/repl.ts`                     | Shared TypeScript types                                         |
+| `groups/*/CLAUDE.md`                    | Per-group context files                                         |
+| `data/nixbot.db`                        | SQLite database (created at runtime)                            |
 
 ## Development Workflow
 
 ### Enter the dev shell
+
 ```bash
 nix develop
 ```
 
 ### Install dependencies
+
 ```bash
 npm install
 ```
 
 ### Run in dev mode (auto-reload)
+
 ```bash
 npm run dev
 ```
 
 ### Build for production
+
 ```bash
 npm run build
 ```
 
 ### Run linter
+
 ```bash
 npm run lint
 ```
 
 ### Fix linting issues automatically
+
 ```bash
 npm run lint:fix
 ```
 
 ### Format code with Prettier
+
 ```bash
 npm run format
 ```
 
 ### Check code formatting
+
 ```bash
 npm run format:check
 ```
@@ -97,10 +121,18 @@ cp .env.example .env
 ```
 
 Required variables:
+
 - `NIXBOT_LLM_PROVIDER` - `anthropic`, `openai`, or `openai-compatible`
 - `ANTHROPIC_API_KEY` or `OPENAI_API_KEY` - API key
 - `NIXBOT_LLM_MODEL` - Model name (e.g., `glm-4-flash`, `claude-sonnet-4-20250514`)
 - `NIXBOT_LLM_BASE_URL` - For openai-compatible providers
+
+Optional variables:
+
+- `NIXBOT_MAX_TOOL_ROUNDS` - Max multi-turn tool execution rounds (default: 10, max: 20)
+- `NIXBOT_SANDBOX_BIN` - Path to sandbox binary (default: `./result/bin/run-in-sandbox`)
+- `NIXBOT_GROUPS_DIR` - Directory for group data (default: `./groups`)
+- `NIXBOT_DATA_DIR` - Directory for database (default: `./data`)
 
 ## Sandbox System
 
@@ -122,27 +154,31 @@ There are two sandboxes:
 import { spawn } from "child_process";
 
 const proc = spawn(config.sandboxBin, [command], {
-  env: { HOME: process.env.HOME, WORKSPACE: workspacePath }
+  env: { HOME: process.env.HOME, WORKSPACE: workspacePath },
 });
 ```
 
 ## Why Bubblewrap Over Docker?
 
 **Attack Surface**
+
 - **Bubblewrap**: ~8,000 lines of C, single purpose
 - **Docker**: ~2 million lines of Go with daemon, networking, registries
 - Result: Docker has 250x more code that could have vulnerabilities
 
 **Privilege Model**
+
 - **Bubblewrap**: Runs entirely as user, no root required
 - **Docker**: Daemon runs as root, container escape = host root access
 - Result: Bubblewrap escape stays in user context
 
 **CVE History**
+
 - **Docker**: 200+ CVEs including container escapes (runc exploits)
 - **Bubblewrap**: ~5 CVEs total, mostly DoS not escapes
 
 **Trade-off**
+
 - Docker offers convenience (images, layers, networking)
 - Bubblewrap offers minimalism (no daemon, no root, fast startup)
 - Same namespace isolation quality, different trust assumptions
@@ -150,14 +186,28 @@ const proc = spawn(config.sandboxBin, [command], {
 ## LLM Integration
 
 The LLM receives a system prompt with:
+
 - Group context from `CLAUDE.md`
 - Recent conversation history
-- Capability instructions
+- Capability instructions (including multi-turn tool use)
+
+### Multi-Turn Tool Execution
 
 When the LLM responds with ` ```bash ` blocks, those commands are:
+
 1. Extracted from the response
 2. Run in the sandbox
-3. Output appended to the response
+3. Output appended to the conversation as tool results
+4. LLM is called again to observe output and decide next steps
+5. Repeats until the LLM responds without bash blocks, or `NIXBOT_MAX_TOOL_ROUNDS` is reached
+
+This enables the agent to:
+
+- Handle errors by reading output and retrying with fixes
+- Read file contents between steps to make informed decisions
+- Iterate on multi-step tasks (e.g., edit, test, fix, repeat)
+
+The loop is controlled by the `NIXBOT_MAX_TOOL_ROUNDS` env var (default: 10, max: 20).
 
 ### Adding a new provider
 
@@ -174,6 +224,7 @@ if (config.provider === "new-provider") {
 ## Database Schema
 
 ### messages table
+
 - `id` - INTEGER PRIMARY KEY
 - `group_name` - TEXT
 - `role` - TEXT (user/assistant)
@@ -181,11 +232,13 @@ if (config.provider === "new-provider") {
 - `created_at` - DATETIME
 
 ### groups table
+
 - `name` - TEXT PRIMARY KEY
 - `context_path` - TEXT
 - `created_at` - DATETIME
 
 ### cron_jobs table
+
 - `id` - INTEGER PRIMARY KEY
 - `group_name` - TEXT
 - `name` - TEXT UNIQUE
@@ -197,6 +250,7 @@ if (config.provider === "new-provider") {
 - `created_at` - DATETIME
 
 ### tape_log table
+
 - `id` - INTEGER PRIMARY KEY
 - `group_name` - TEXT
 - `action_type` - TEXT (command, output, feedback, llm_request, llm_response, pause, cancel, resume)
@@ -211,25 +265,25 @@ Scheduled agent tasks run per-group using standard cron syntax.
 
 ### REPL Commands
 
-| Command | Description |
-|---------|-------------|
-| `/cron list [group]` | List cron jobs (optionally filtered by group) |
-| `/cron add <NAME> <SCHEDULE> <PROMPT>` | Add a new job |
-| `/cron remove <NAME>` | Remove a job |
-| `/cron enable <NAME>` | Enable a disabled job |
-| `/cron disable <NAME>` | Disable a job |
+| Command                                | Description                                   |
+| -------------------------------------- | --------------------------------------------- |
+| `/cron list [group]`                   | List cron jobs (optionally filtered by group) |
+| `/cron add <NAME> <SCHEDULE> <PROMPT>` | Add a new job                                 |
+| `/cron remove <NAME>`                  | Remove a job                                  |
+| `/cron enable <NAME>`                  | Enable a disabled job                         |
+| `/cron disable <NAME>`                 | Disable a job                                 |
 
 ### Schedule Format
 
 Standard 5-field cron: `minute hour day-of-month month day-of-week`
 
-| Field | Values |
-|-------|--------|
-| minute | 0-59 |
-| hour | 0-23 |
-| day-of-month | 1-31 |
-| month | 1-12 |
-| day-of-week | 0-6 (0 = Sunday) |
+| Field        | Values           |
+| ------------ | ---------------- |
+| minute       | 0-59             |
+| hour         | 0-23             |
+| day-of-month | 1-31             |
+| month        | 1-12             |
+| day-of-week  | 0-6 (0 = Sunday) |
 
 Special characters: `*` (any), `,` (list), `-` (range), `/` (step)
 
@@ -262,11 +316,13 @@ The agent can create cron jobs from natural language requests:
 ```
 
 The LLM will automatically generate and execute:
+
 ```
 /cron add check-example '0 9 * * *' 'Check https://example.com and report changes'
 ```
 
 Common patterns:
+
 - "every minute" → `*/1 * * * *`
 - "every hour"/"hourly" → `0 * * * *`
 - "every day"/"daily" → `0 9 * * *`
@@ -307,6 +363,7 @@ While the agent is executing commands, you can provide real-time feedback. A sup
 ### Supervisor Agent
 
 The supervisor agent has context about:
+
 - The original task being performed
 - The currently running command
 - The latest output from the command
@@ -326,6 +383,7 @@ Pause execution mid-task to review progress or give new instructions.
 ### Pause Keywords
 
 Type any of these (and press Enter) while the agent is working:
+
 - `pause`, `wait`, `hold on`, `stop`
 - `hang on`, `hold up`, `give me a moment`
 - `hold it`, `freeze`
@@ -356,24 +414,24 @@ All actions and outputs are logged to the tape log for review and querying. Logs
 
 ### What's Logged
 
-| Action Type | Description |
-|-------------|-------------|
-| `command` | Bash commands executed in sandbox |
-| `output` | Command output (truncated to 2000 chars) |
-| `feedback` | Mid-task user feedback |
-| `llm_request` | User messages sent to LLM |
-| `llm_response` | LLM responses (truncated) |
-| `pause` | Pause requests |
-| `cancel` | Cancel requests |
-| `resume` | Resume after pause |
+| Action Type    | Description                              |
+| -------------- | ---------------------------------------- |
+| `command`      | Bash commands executed in sandbox        |
+| `output`       | Command output (truncated to 2000 chars) |
+| `feedback`     | Mid-task user feedback                   |
+| `llm_request`  | User messages sent to LLM                |
+| `llm_response` | LLM responses (truncated)                |
+| `pause`        | Pause requests                           |
+| `cancel`       | Cancel requests                          |
+| `resume`       | Resume after pause                       |
 
 ### REPL Commands
 
-| Command | Description |
-|---------|-------------|
+| Command                | Description                         |
+| ---------------------- | ----------------------------------- |
 | `/tape recent [hours]` | Show recent activity (default: 24h) |
-| `/tape search <query>` | Search tape logs |
-| `/tape stats` | Show tape statistics |
+| `/tape search <query>` | Search tape logs                    |
+| `/tape stats`          | Show tape statistics                |
 
 ### Example
 
@@ -420,18 +478,18 @@ Credentials are stored encrypted at `~/.nixbot/credentials.json` using AES-256-G
 
 ### Files
 
-| Path | Purpose |
-|------|---------|
-| `~/.nixbot/key` | 32-byte encryption key (auto-generated, mode 0600) |
-| `~/.nixbot/credentials.json` | Encrypted credential store |
+| Path                         | Purpose                                            |
+| ---------------------------- | -------------------------------------------------- |
+| `~/.nixbot/key`              | 32-byte encryption key (auto-generated, mode 0600) |
+| `~/.nixbot/credentials.json` | Encrypted credential store                         |
 
 ### REPL Commands
 
-| Command | Description |
-|---------|-------------|
-| `/cred list` | List all credentials (name, scope, last used) |
-| `/cred add <NAME> [SCOPE]` | Add credential (prompts for value) |
-| `/cred remove <NAME>` | Remove credential |
+| Command                    | Description                                   |
+| -------------------------- | --------------------------------------------- |
+| `/cred list`               | List all credentials (name, scope, last used) |
+| `/cred add <NAME> [SCOPE]` | Add credential (prompts for value)            |
+| `/cred remove <NAME>`      | Remove credential                             |
 
 ### Example
 
@@ -453,8 +511,8 @@ Credential 'GITHUB_TOKEN' stored.
 
 ### Environment Variables
 
-| Variable | Purpose |
-|----------|---------|
+| Variable          | Purpose                                      |
+| ----------------- | -------------------------------------------- |
 | `NIXBOT_CRED_DIR` | Override credentials directory (for testing) |
 
 ## Common Tasks
@@ -471,6 +529,7 @@ agentTools = with pkgs; [
 ```
 
 Rebuild:
+
 ```bash
 nix build . -o result
 ```
@@ -490,11 +549,13 @@ if (input.startsWith("/mycommand ")) {
 ### Debug sandbox issues
 
 Run the test:
+
 ```bash
 npx tsx src/test-sandbox.ts
 ```
 
 Or manually:
+
 ```bash
 ./result/bin/run-in-sandbox "echo test"
 ```
@@ -502,22 +563,29 @@ Or manually:
 ## Troubleshooting
 
 ### "Cannot find module"
+
 Make sure you're in the nix dev shell and ran `npm install`
 
 ### "No API key found"
+
 Check that `.env` file exists and has correct variables, or set env vars directly
 
 ### Sandbox hangs
+
 The GUI sandbox starts xwayland-satellite which can block. Use the headless sandbox for CLI commands.
 
 ### Database errors
+
 Delete `data/` directory to reset:
+
 ```bash
 rm -rf data/
 ```
 
 ### Credential errors
+
 If credentials fail to decrypt, the key file may be corrupted or mismatched:
+
 ```bash
 # Warning: this will make all stored credentials inaccessible
 rm ~/.nixbot/key ~/.nixbot/credentials.json
@@ -526,21 +594,25 @@ rm ~/.nixbot/key ~/.nixbot/credentials.json
 ## Testing
 
 ### Unit tests
+
 ```bash
 npm test
 ```
 
 ### Unit test the sandbox
+
 ```bash
 npx tsx src/test-sandbox.ts
 ```
 
 ### Manual test
+
 ```bash
 echo "hello" | npm run dev
 ```
 
 ### Test LLM integration
+
 ```bash
 OPENAI_API_KEY=test npm run dev
 # Then type: test
@@ -549,6 +621,7 @@ OPENAI_API_KEY=test npm run dev
 ## Deployment
 
 ### As a Nix package
+
 ```nix
 # In another flake
 inputs.nixbot.url = "path:/path/to/nixbot";
@@ -558,6 +631,7 @@ environment.systemPackages = [ nixbot.packages.x86_64-linux.default ];
 ```
 
 ### As a systemd service
+
 Create a systemd unit that runs `npm run start` with appropriate env vars.
 
 ## Notes
